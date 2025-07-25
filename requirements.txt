@@ -1,0 +1,80 @@
+# Core Flask and Web Framework
+flask==3.0.0
+gunicorn==21.2.0
+
+# Database and BigQuery
+google-cloud-bigquery==3.15.0
+pandas==2.2.0
+numpy>=1.26.0
+db-dtypes==1.2.0
+
+# AI/ML Libraries
+google-generativeai==0.4.0
+openai==1.12.0
+anthropic==0.18.0
+httpx==0.27.0
+
+# Data Visualization
+plotly==5.18.0
+
+# Dashboard and Interactive Components
+dash==2.16.1
+dash-bootstrap-components==1.5.0
+
+# Caching and Session Management
+flask-caching==2.1.0
+redis==5.0.1
+
+# Security and Authentication
+firebase-admin==6.4.0
+flask-limiter==3.5.0
+
+# Retry Logic and Resilience
+tenacity==8.2.3
+
+# Google Cloud Services
+google-cloud-secret-manager==2.18.0
+google-cloud-billing==1.12.1
+google-cloud-storage==2.13.0
+
+# Configuration and Environment
+python-dotenv==1.0.1
+
+# Data Processing and Analysis
+# concurrent-futures is built into Python 3.2+
+
+# Development and Debugging (optional)
+flask-cors==4.0.0
+
+# Additional dependencies for enhanced features
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.4
+
+# Data export capabilities
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Time and date utilities
+python-dateutil==2.8.2
+
+# JSON and data serialization
+ujson==5.9.0
+
+# Monitoring and logging
+structlog==23.2.0
+
+# Performance optimizations (optional)
+gevent==23.9.1
+
+# Testing dependencies (development only - commented out for production)
+# pytest==8.0.0
+# pytest-flask==1.3.0
+# pytest-mock==3.12.0
+# coverage==7.4.0
+
+# Code quality (development only - commented out for production)
+# black==24.0.0
+# flake8==7.0.0
+# mypy==1.8.0
+
