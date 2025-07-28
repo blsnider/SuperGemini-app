@@ -1,0 +1,91 @@
+# MCP Toolbox Configuration for Retail Analytics System
+# Version 2: Using individual parameters instead of dynamic WHERE conditions
+
+# Data Sources Configuration
+sources:
+  # BigQuery warehouse source
+  bq-warehouse:
+    kind: bigquery
+    project: ${BQ_PROJECT:-sis-sandbox-463113}
+    location: us
+    
+  # BigQuery data marts source  
+  bq-datamarts:
+    kind: bigquery
+    project: ${BQ_PROJECT:-sis-sandbox-463113}
+    location: us
+
+# Tool Definitions
+tools:
+  # ===========================================
+  # TOP SELLING ITEMS ANALYSIS - FIXED VERSION
+  # ===========================================
+  get_top_selling_items:
+    kind: bigquery-sql
+    source: bq-warehouse
+    description: |
+      Get top selling items by revenue or units. Supports filtering by store, shop, time period.
+      Use this for queries like "top selling items", "best sellers", "highest revenue products".
+    parameters:
+      - name: store_id
+        type: integer
+        description: Store ID to filter by (0 for all stores)
+        default: 0
+      - name: shop_id
+        type: integer
+        description: Shop ID to filter by (0 for all shops)
+        default: 0
+      - name: year_filter
+        type: integer
+        description: Year to filter by (0 for all years)
+        default: 0
+      - name: days_back
+        type: integer
+        description: Number of days to look back (0 for no time filter)
+        default: 0
+      - name: limit
+        type: integer
+        description: Number of items to return
+        default: 10000
+    statement: |
+      WITH sales_data AS (
+        SELECT 
+          fs.sku_id,
+          skus.as400_data.sku_description as product_name,
+          skus.as400_data.style as style,
+          skus.as400_data.vendor_name1 as vendor,
+          skus.as400_data.specialty_shop_description as shop_name,
+          st.name as store_name,
+          st.dim_store_id as store_id,
+          skus.specialty_shop as shop_id,
+          SUM(fs.quantity) as total_units,
+          SUM(fs.price_extended) as total_revenue,
+          SUM(fs.cogs_extended) as total_cost,
+          SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100 as margin_pct
+        FROM `sis-sandbox-463113.warehouse.fct_sales` fs
+        LEFT JOIN `sis-sandbox-463113.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+        LEFT JOIN `sis-sandbox-463113.warehouse.dim_stores` st ON fs.store_id = st.dim_store_id
+        WHERE 1=1
+          AND (CASE WHEN @store_id = 0 THEN TRUE ELSE st.dim_store_id = @store_id END)
+          AND (CASE WHEN @shop_id = 0 THEN TRUE ELSE skus.specialty_shop = @shop_id END)
+          AND (CASE WHEN @year_filter = 0 THEN TRUE ELSE EXTRACT(YEAR FROM fs.transaction_datetime) = @year_filter END)
+          AND (CASE WHEN @days_back = 0 THEN TRUE ELSE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL @days_back DAY) END)
+        GROUP BY 
+          fs.sku_id, skus.as400_data.sku_description, skus.as400_data.style,
+          skus.as400_data.vendor_name1, skus.as400_data.specialty_shop_description, 
+          st.name, st.dim_store_id, skus.specialty_shop
+      )
+      SELECT *
+      FROM sales_data
+      ORDER BY total_revenue DESC
+      LIMIT @limit
+
+  # Continue with other tools using similar parameter approach...
+  
+# ===========================================
+# TOOLSETS CONFIGURATION
+# ===========================================
+toolsets:
+  # Core retail analytics toolset
+  retail_analytics:
+    - get_top_selling_items

@@ -1,4 +1,4 @@
-# app.py - Production Ready Flask Application with Smart Environment Handling
+# app.py - MCP-Only Flask Application for Retail Analytics
 import os
 import logging
 import traceback
@@ -22,15 +22,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-logger.info(f"=== Starting Super Gemini Application ({environment}) ===")
+logger.info(f"=== Starting MCP-Only Retail Analytics Application ({environment}) ===")
+
+# Ensure GOOGLE_CLOUD_PROJECT is set for all GCP clients
+if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+    fallback_project = os.getenv("GCP_PROJECT", "sis-sandbox-463113")
+    os.environ["GOOGLE_CLOUD_PROJECT"] = fallback_project
+    logger.info(f"🛠 Set GOOGLE_CLOUD_PROJECT to: {fallback_project}")
 
 # Test Google Cloud setup for smart fallback
 def test_google_cloud_setup():
     """Test Google Cloud libraries and authentication setup."""
     try:
         import google.auth
-        import google.cloud.secretmanager
         credentials, project = google.auth.default()
+        if not project:
+            project = os.getenv("GOOGLE_CLOUD_PROJECT")
         logger.info(f"✅ GCP authentication successful, project: {project}")
         return True
     except Exception as e:
@@ -52,10 +59,9 @@ except ImportError as e:
     logging.warning(f"Security features not available due to missing dependencies: {e}")
     SECURITY_FEATURES_AVAILABLE = False
 
-# Smart Secret Loading
+# Smart Secret Loading (same as before)
 def load_secret(secret_name: str, project_id: str = None) -> str:
     """Load secret from GCP Secret Manager with smart fallback."""
-    # Check environment variable first
     env_var_name = secret_name.upper().replace('-', '_')
     env_value = os.getenv(env_var_name)
     
@@ -63,7 +69,6 @@ def load_secret(secret_name: str, project_id: str = None) -> str:
         logger.info(f"✅ Using environment variable for {secret_name}")
         return env_value
     
-    # Try Secret Manager only if available and in production-like environment
     if not SECURITY_FEATURES_AVAILABLE or not gcp_available:
         logger.warning(f"Secret Manager not available for {secret_name}")
         return ''
@@ -163,7 +168,7 @@ def initialize_security_features(app: Flask) -> tuple:
     return firebase_app, limiter
 
 def load_api_keys():
-    """Load API keys with smart fallback logic."""
+    """Load API keys for LLM services (used for summaries)."""
     try:
         logger.info("Loading API keys...")
         
@@ -201,15 +206,14 @@ except ImportError as e:
     DASHBOARD_AVAILABLE = False
     init_dash = None
 
-# Test application imports
+# Load MCP-only application modules
 try:
-    logger.info("Loading application modules...")
+    logger.info("Loading MCP-only application modules...")
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     
     from chatbot.config import get_available_models, get_store_mappings, get_shop_mappings
-    from weighting_logic import WeightingCalculator, CoverageMetrics, apply_weighting_to_results
-    from chatbot import SuperGeminiRetailChatbot
-    logger.info("✅ All application modules loaded successfully")
+    from chatbot.core import SuperGeminiRetailChatbot  # Fixed import path
+    logger.info("✅ All MCP-only application modules loaded successfully")
     
 except Exception as e:
     logger.error(f"❌ Import error: {e}")
@@ -222,13 +226,13 @@ cache = Cache(config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 300})
 # Configuration
 @dataclass
 class AppConfig:
-    bq_project: str = os.getenv('BQ_PROJECT', 'sis-data-marts')
+    bq_project: str = os.getenv('BQ_PROJECT', 'sis-sandbox-463113')  # Updated project ID
     model_name: str = os.getenv('DEFAULT_MODEL', 'gemini-2.5-pro')
     preview_rows: int = int(os.getenv('PREVIEW_ROWS', '20'))
-    enable_weighting: bool = os.getenv('ENABLE_WEIGHTING', 'True').lower() == 'true'
     enable_auth: bool = os.getenv('ENABLE_AUTH', 'False').lower() == 'true'
     max_history_items: int = int(os.getenv('MAX_HISTORY_ITEMS', '50'))
     environment: str = environment
+    toolbox_url: str = os.getenv('TOOLBOX_URL', 'https://toolbox-41815171183.us-central1.run.app')
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -317,120 +321,41 @@ def get_query_history() -> List[Dict[str, Any]]:
     """Get query history from session."""
     return session.get('query_history', [])
 
-# Sample queries
-SAMPLE_QUERIES = [
+# Sample queries for MCP tools
+MCP_SAMPLE_QUERIES = [
     "Show me top 10 selling products by revenue",
-    "Which products are overstocked?",
-    "Products with low inventory that need reordering",
-    "Top performing categories by margin",
-    "Products with declining sales trends",
-    "Inventory analysis for urgent reorders",
-    "Show products with high coverage gaps",
-    "Out of stock items with high demand",
-    "Products requiring immediate attention",
-    "Monthly sales performance summary"
+    "Which products are out of stock with recent sales?",
+    "Products with excess inventory over 90 days supply",
+    "Top performing items by margin",
+    "Sales trends over last 30 days",
+    "Inventory status for store 64",
+    "Compare sales between stores",
+    "Return analysis by store",
+    "Top selling items in shop 3",
+    "Monthly sales performance for 2025"
 ]
 
-# Initialize components
-logger.info("Initializing application components...")
-
-try:
-    weighting_calculator = WeightingCalculator()
-    logger.info("✅ WeightingCalculator initialized")
-except Exception as e:
-    logger.error(f"Failed to initialize WeightingCalculator: {e}")
-    weighting_calculator = None
+# Initialize MCP-only chatbot
+logger.info("Initializing MCP-only chatbot...")
 
 try:
     chatbot = SuperGeminiRetailChatbot(config)
-    logger.info("✅ Chatbot initialized successfully")
+    app.chatbot = chatbot  # Store reference for other routes
+    logger.info("✅ MCP-only chatbot initialized successfully")
+    
+    # Log MCP status
+    if hasattr(chatbot, 'toolbox_enabled'):
+        logger.info(f"MCP Toolbox enabled: {chatbot.toolbox_enabled}")
+        if chatbot.toolbox_enabled and hasattr(chatbot, 'tools'):
+            if isinstance(chatbot.tools, dict):
+                logger.info(f"Available MCP tools: {list(chatbot.tools.keys())}")
+            else:
+                logger.info(f"Available MCP tools count: {len(chatbot.tools)}")
+    
 except Exception as e:
-    logger.error(f"Failed to initialize chatbot: {e}")
+    logger.error(f"Failed to initialize MCP-only chatbot: {e}")
     logger.error(f"Full traceback: {traceback.format_exc()}")
     chatbot = None
-
-# Helper functions
-def should_apply_weighting(query: str) -> bool:
-    """Determine if weighting logic should be applied."""
-    try:
-        if not config.enable_weighting or not weighting_calculator:
-            return False
-        
-        weighting_keywords = [
-            'weighting', 'weight', 'priority', 'coverage', 'risk', 'reorder',
-            'stock analysis', 'inventory analysis', 'order quantity', 'recommended',
-            'overstocked', 'understocked', 'out of stock', 'review flag',
-            'action group', 'urgent', 'monitoring', 'inventory', 'stock'
-        ]
-        
-        query_lower = query.lower()
-        result = any(keyword in query_lower for keyword in weighting_keywords)
-        logger.debug(f"Weighting check for '{query}': {result}")
-        return result
-    except Exception as e:
-        logger.error(f"Error in should_apply_weighting: {e}")
-        return False
-
-def enhance_results_with_weighting(results: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
-    """Apply weighting logic to query results."""
-    try:
-        if not results or not should_apply_weighting(query):
-            return {'results': results, 'weighting_applied': False}
-        
-        logger.info(f"Applying weighting logic to {len(results)} results")
-        enhanced_results = apply_weighting_to_results(results)
-        
-        # Generate summary statistics
-        summary_stats = {
-            'total_skus': len(enhanced_results),
-            'by_risk_level': {},
-            'by_action_group': {},
-            'avg_coverage_percentage': 0,
-            'total_coverage_gap': 0,
-            'total_recommended_qty': 0
-        }
-        
-        coverage_percentages = []
-        for result in enhanced_results:
-            risk_level = result.get('risk_level', 'Unknown')
-            summary_stats['by_risk_level'][risk_level] = summary_stats['by_risk_level'].get(risk_level, 0) + 1
-            
-            action_group = result.get('action_group', 'Unknown')
-            summary_stats['by_action_group'][action_group] = summary_stats['by_action_group'].get(action_group, 0) + 1
-            
-            summary_stats['total_coverage_gap'] += result.get('coverage_gap', 0)
-            summary_stats['total_recommended_qty'] += result.get('recommended_order_qty', 0)
-            
-            coverage_pct = result.get('coverage_percentage')
-            if coverage_pct is not None and coverage_pct >= 0:
-                coverage_percentages.append(coverage_pct)
-        
-        if coverage_percentages:
-            summary_stats['avg_coverage_percentage'] = sum(coverage_percentages) / len(coverage_percentages)
-        
-        summary_stats['items_needing_attention'] = (
-            summary_stats['by_risk_level'].get('Critical', 0) + 
-            summary_stats['by_risk_level'].get('High', 0)
-        )
-        
-        return {
-            'results': enhanced_results,
-            'weighting_applied': True,
-            'summary_stats': summary_stats,
-            'weighting_metadata': {
-                'total_processed': len(results),
-                'successfully_enhanced': len(enhanced_results),
-                'failed_items': len(results) - len(enhanced_results)
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error applying weighting logic: {e}")
-        return {
-            'results': results, 
-            'weighting_applied': False, 
-            'error': str(e)
-        }
 
 # Routes
 @app.route('/')
@@ -450,7 +375,8 @@ def get_models() -> Dict[str, Any]:
         return jsonify({
             'success': True,
             'models': models,
-            'default_model': config.model_name
+            'default_model': config.model_name,
+            'system_mode': 'MCP-Only'
         })
     except Exception as e:
         logger.error(f"Error getting models: {e}")
@@ -460,9 +386,17 @@ def get_models() -> Dict[str, Any]:
 @limiter.limit("50 per minute") if limiter else lambda f: f
 @optional_auth
 def chat() -> Dict[str, Any]:
-    """Handle chat requests."""
+    """Handle chat requests using ONLY MCP tools."""
     if not chatbot:
-        return jsonify({'success': False, 'error': 'Chatbot not initialized'}), 500
+        return jsonify({'success': False, 'error': 'MCP chatbot not initialized'}), 500
+
+    if not chatbot.toolbox_enabled:
+        return jsonify({
+            'success': False, 
+            'error': 'MCP Toolbox is not enabled. Please check server configuration.',
+            'system_mode': 'MCP-Only',
+            'suggestion': 'Ensure MCP Toolbox server is running and tools.yaml is configured'
+        }), 500
 
     try:
         if not request.is_json:
@@ -471,7 +405,6 @@ def chat() -> Dict[str, Any]:
         data = request.json or {}
         query = data.get('query', '').strip()
         model = data.get('model', config.model_name).lower()
-        apply_weighting = data.get('apply_weighting', True)
         
         user_id = getattr(g, 'user', {}).get('email') or 'anonymous'
         session_id = request.headers.get('X-Cloud-Trace-Context', 'default').split('/')[0]
@@ -479,32 +412,28 @@ def chat() -> Dict[str, Any]:
         if not query:
             return jsonify({'success': False, 'error': 'No query provided'}), 400
 
-        # Validate model
+        # Validate model (for summary generation)
         if not chatbot.available_models or model not in chatbot.available_models:
             return jsonify({'success': False, 'error': f'Invalid model: {model}'}), 400
 
-        # Call chatbot
+        # Call MCP-only chatbot
         try:
             result = chatbot.chat(query, model, user_id, session_id)
         except Exception as e:
-            logger.error(f"Chatbot error: {e}")
+            logger.error(f"MCP chatbot error: {e}")
             return jsonify({
                 'success': False,
-                'error': f'Chatbot error: {str(e)}'
+                'error': f'MCP chatbot error: {str(e)}',
+                'system_mode': 'MCP-Only'
             }), 500
-        
-        # Apply weighting if applicable
-        if result.get('success') and apply_weighting and result.get('results'):
-            try:
-                weighting_result = enhance_results_with_weighting(result['results'], query)
-                result.update(weighting_result)
-            except Exception as e:
-                logger.error(f"Weighting error: {e}")
-                result['weighting_error'] = str(e)
         
         # Add to history
         results_count = len(result.get('results', [])) if result.get('success') else 0
         add_to_history(query, results_count)
+        
+        # Add system information to response
+        result['system_mode'] = 'MCP-Only'
+        result['sql_generation_disabled'] = True
         
         return jsonify(result)
 
@@ -512,24 +441,275 @@ def chat() -> Dict[str, Any]:
         logger.error(f"Chat request failed: {e}")
         return jsonify({
             'success': False,
-            'error': f'Internal error: {str(e)}'
+            'error': f'Internal error: {str(e)}',
+            'system_mode': 'MCP-Only'
+        }), 500
+
+@app.route('/chart', methods=['POST'])
+@optional_auth
+def generate_chart():
+    """Generate chart from last query results."""
+    if not chatbot:
+        return jsonify({'success': False, 'error': 'MCP chatbot not initialized'}), 500
+    
+    try:
+        data = request.json or {}
+        chart_type = data.get('chart_type')
+        
+        result = chatbot.generate_chart(chart_type)
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Chart generation error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/summary', methods=['POST'])
+@optional_auth
+def generate_summary():
+    """Generate AI summary of last query results."""
+    if not chatbot:
+        return jsonify({'success': False, 'error': 'MCP chatbot not initialized'}), 500
+    
+    try:
+        data = request.json or {}
+        model = data.get('model', config.model_name)
+        
+        result = chatbot.generate_llm_summary(model)
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Summary generation error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/suggest', methods=['GET'])
+def suggest():
+    """Provide MCP-optimized query suggestions."""
+    try:
+        query = request.args.get('q', '').strip().lower()
+        
+        if not query:
+            return jsonify({'suggestions': MCP_SAMPLE_QUERIES[:8]})
+        
+        # Filter MCP sample queries based on input
+        matching_suggestions = [
+            suggestion for suggestion in MCP_SAMPLE_QUERIES
+            if query in suggestion.lower()
+        ]
+        
+        # If no direct matches, try partial word matching
+        if not matching_suggestions:
+            query_words = query.split()
+            for suggestion in MCP_SAMPLE_QUERIES:
+                suggestion_lower = suggestion.lower()
+                if any(word in suggestion_lower for word in query_words):
+                    matching_suggestions.append(suggestion)
+        
+        # Limit to top 8 suggestions
+        matching_suggestions = matching_suggestions[:8]
+        
+        # Add some context-aware suggestions
+        if 'store' in query and '64' in query:
+            matching_suggestions.insert(0, "inventory status for store 64")
+        elif 'shop' in query and '3' in query:
+            matching_suggestions.insert(0, "top selling items in shop 3")
+        elif 'top' in query and 'sales' in query:
+            matching_suggestions.insert(0, "top 10 selling products by revenue")
+        
+        return jsonify({
+            'suggestions': matching_suggestions,
+            'query': query,
+            'count': len(matching_suggestions),
+            'system_mode': 'MCP-Only'
+        })
+        
+    except Exception as e:
+        logger.error(f"Suggestion endpoint error: {str(e)}")
+        return jsonify({
+            'suggestions': MCP_SAMPLE_QUERIES[:5],
+            'error': 'Failed to generate suggestions'
+        }), 500
+
+@app.route('/cost_summary', methods=['GET'])
+def cost_summary():
+    """Get cost summary (MCP tools are typically infrastructure-only costs)."""
+    try:
+        if not chatbot:
+            return jsonify({
+                'error': 'MCP chatbot not initialized',
+                'total_cost': 0.0,
+                'queries_executed': 0
+            }), 500
+        
+        cost_data = chatbot.get_cost_summary()
+        cost_data['system_mode'] = 'MCP-Only'
+        
+        return jsonify({
+            'success': True,
+            'cost_summary': cost_data,
+            'timestamp': time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"Cost summary endpoint error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'total_cost': 0.0,
+            'queries_executed': 0
+        }), 500
+
+@app.route('/reset_costs', methods=['POST'])
+def reset_costs():
+    """Reset cost tracking."""
+    try:
+        if not chatbot:
+            return jsonify({
+                'error': 'MCP chatbot not initialized'
+            }), 500
+        
+        chatbot.reset_cost_tracking()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Cost tracking reset successfully',
+            'system_mode': 'MCP-Only'
+        })
+        
+    except Exception as e:
+        logger.error(f"Reset costs endpoint error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/toolbox_status', methods=['GET'])
+def toolbox_status():
+    """Get MCP Toolbox status and available tools."""
+    try:
+        if not chatbot:
+            return jsonify({
+                'error': 'MCP chatbot not initialized',
+                'toolbox_available': False
+            }), 500
+        
+        status = chatbot.get_toolbox_status()
+        status['system_mode'] = 'MCP-Only'
+        
+        return jsonify({
+            'success': True,
+            'toolbox_status': status,
+            'timestamp': time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"Toolbox status endpoint error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'toolbox_available': False
+        }), 500
+
+@app.route('/query-history', methods=['GET'])
+def query_history():
+    """Get recent query history."""
+    try:
+        history = get_query_history()
+        recent_queries = [item['query'] for item in history[:10]]
+        
+        return jsonify({
+            'recent_queries': recent_queries,
+            'count': len(recent_queries),
+            'system_mode': 'MCP-Only'
+        })
+        
+    except Exception as e:
+        logger.error(f"Query history endpoint error: {str(e)}")
+        return jsonify({
+            'recent_queries': [],
+            'error': 'Failed to fetch query history'
+        }), 500
+
+@app.route('/system_info', methods=['GET'])
+def system_info():
+    """Get system information for MCP-only configuration."""
+    try:
+        info = {
+            'chatbot_initialized': chatbot is not None,
+            'toolbox_available': False,
+            'toolbox_enabled': False,
+            'available_tools': [],
+            'models_available': [],
+            'bigquery_connected': False,
+            'auth_enabled': config.enable_auth,
+            'dashboard_available': dash_app is not None,
+            'firebase_initialized': firebase_app is not None,
+            'environment': config.environment,
+            'system_mode': 'MCP-Only',
+            'sql_generation_disabled': True,
+            'toolbox_url': config.toolbox_url
+        }
+        
+        if chatbot:
+            # Get toolbox status
+            toolbox_status_data = chatbot.get_toolbox_status()
+            info.update({
+                'toolbox_available': toolbox_status_data.get('toolbox_available', False),
+                'toolbox_enabled': toolbox_status_data.get('toolbox_enabled', False),
+                'available_tools': toolbox_status_data.get('available_tools', [])
+            })
+            
+            # Get available models
+            info['models_available'] = list(chatbot.available_models.keys()) if chatbot.available_models else []
+            
+            # Test BigQuery connection
+            try:
+                chatbot.bigquery_utils.bq_client.query("SELECT 1").result()
+                info['bigquery_connected'] = True
+            except:
+                info['bigquery_connected'] = False
+        
+        # Check API keys (used for summaries)
+        api_keys_status = {}
+        for key in ['GOOGLE_API_KEY', 'XAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY']:
+            api_keys_status[key] = bool(os.getenv(key))
+        info['api_keys'] = api_keys_status
+        
+        return jsonify({
+            'success': True,
+            'system_info': info,
+            'timestamp': time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"System info endpoint error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 @app.route('/health')
 def health() -> Dict[str, Any]:
-    """Comprehensive health check."""
+    """Comprehensive health check for MCP-only system."""
     try:
         status = {
             'status': 'healthy',
             'environment': config.environment,
+            'system_mode': 'MCP-Only',
+            'sql_generation_disabled': True,
             'chatbot_initialized': chatbot is not None,
-            'weighting_enabled': config.enable_weighting,
             'auth_enabled': config.enable_auth,
             'gcp_auth_available': gcp_available,
             'security_features_available': SECURITY_FEATURES_AVAILABLE,
             'rate_limiting_enabled': limiter is not None,
             'firebase_initialized': firebase_app is not None,
-            'dashboard_available': dash_app is not None
+            'dashboard_available': dash_app is not None,
+            'toolbox_url': config.toolbox_url
         }
         
         # Test BigQuery connection
@@ -546,6 +726,15 @@ def health() -> Dict[str, Any]:
                 status['bq_error'] = str(e)
             
             status['available_models'] = list(chatbot.available_models.keys()) if chatbot.available_models else []
+            
+            # MCP Toolbox status
+            if hasattr(chatbot, 'toolbox_enabled'):
+                status['mcp_toolbox_enabled'] = chatbot.toolbox_enabled
+                if chatbot.toolbox_enabled and hasattr(chatbot, 'tools'):
+                    if isinstance(chatbot.tools, dict):
+                        status['mcp_tools_available'] = list(chatbot.tools.keys())
+                    else:
+                        status['mcp_tools_count'] = len(chatbot.tools) if chatbot.tools else 0
         
         # Check API keys
         api_keys_status = {}
@@ -559,18 +748,30 @@ def health() -> Dict[str, Any]:
         logger.error(f"Health check error: {e}")
         return jsonify({
             'status': 'unhealthy',
-            'error': str(e)
+            'error': str(e),
+            'system_mode': 'MCP-Only'
         }), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     debug = config.environment != 'production'
     
-    logger.info(f"Starting Super Gemini server on port {port}")
+    logger.info(f"Starting MCP-Only Retail Analytics server on port {port}")
     logger.info(f"Environment: {config.environment}")
     logger.info(f"Debug mode: {debug}")
     logger.info(f"Authentication: {'Enabled' if config.enable_auth else 'Disabled'}")
-    logger.info(f"Weighting: {'Enabled' if config.enable_weighting else 'Disabled'}")
     logger.info(f"GCP Auth: {'Available' if gcp_available else 'Not available'}")
+    logger.info(f"Dashboard: {'Available' if dash_app else 'Not available'}")
+    logger.info(f"Firebase: {'Initialized' if firebase_app else 'Not initialized'}")
+    logger.info(f"MCP Toolbox URL: {config.toolbox_url}")
+    logger.info("🚫 SQL Generation: DISABLED (MCP-Only Mode)")
+    
+    if chatbot:
+        logger.info(f"MCP Toolbox: {'Enabled' if getattr(chatbot, 'toolbox_enabled', False) else 'Disabled'}")
+        if hasattr(chatbot, 'toolbox_enabled') and chatbot.toolbox_enabled:
+            if isinstance(chatbot.tools, dict):
+                logger.info(f"Available MCP tools: {list(chatbot.tools.keys())}")
+            else:
+                logger.info(f"MCP tools count: {len(chatbot.tools) if chatbot.tools else 0}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)

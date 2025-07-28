@@ -1,13 +1,14 @@
 import time
 import logging
 import json
-from .query_patterns import extract_intent
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
 def generate_summary(df, query, model_name, available_models, api_clients, bigquery_utils, toolbox_context=None):
     """
-    Generate summary with enhanced MCP Toolbox context awareness
+    Generate summary with enhanced MCP Toolbox context awareness.
+    Removed dependency on query_patterns - uses data analysis instead.
     
     Args:
         df: DataFrame with query results
@@ -23,10 +24,8 @@ def generate_summary(df, query, model_name, available_models, api_clients, bigqu
         
     start_time = time.time()
     
-    # Enhanced analysis based on data content and toolbox context
-    intent = extract_intent(query)
-    is_inventory_query = any(col for col in df.columns if any(keyword in col.lower() for keyword in ['oh_units', 'inventory', 'days_supply', 'stock_status']))
-    is_return_query = any(col for col in df.columns if any(keyword in col.lower() for keyword in ['return', 'defective', 'exchange']))
+    # Analyze data content to determine summary type (replaces extract_intent)
+    data_analysis = _analyze_data_content(df, query)
     
     # Build enhanced data summary with toolbox context
     data_summary = f"""
@@ -56,11 +55,15 @@ def generate_summary(df, query, model_name, available_models, api_clients, bigqu
     {df.describe().to_string() if not df.empty else 'No numeric data'}
     """
     
-    # Enhanced prompts based on query type and toolbox integration
-    if is_return_query:
+    # Enhanced prompts based on data analysis and toolbox integration
+    if data_analysis['type'] == 'returns':
         prompt = generate_returns_summary_prompt(data_summary, toolbox_context)
-    elif is_inventory_query:
+    elif data_analysis['type'] == 'inventory':
         prompt = generate_inventory_summary_prompt(data_summary, toolbox_context)
+    elif data_analysis['type'] == 'sales':
+        prompt = generate_sales_summary_prompt(data_summary, toolbox_context)
+    elif data_analysis['type'] == 'trends':
+        prompt = generate_trends_summary_prompt(data_summary, toolbox_context)
     else:
         prompt = generate_general_summary_prompt(data_summary, toolbox_context)
     
@@ -84,13 +87,72 @@ def generate_summary(df, query, model_name, available_models, api_clients, bigqu
             execution_time_ms=execution_time_ms,
             data_preview=data_preview,
             user_id=None,
-            session_id=None
+            session_id=None,
+            summary_method='mcp_enhanced' if toolbox_context else 'standard'
         )
         
         return summary
     except Exception as e:
         logger.error(f"Summary generation failed: {e}")
         return "Unable to generate summary at this time."
+
+def _analyze_data_content(df, query: str) -> Dict[str, Any]:
+    """
+    Analyze DataFrame content to determine data type and characteristics.
+    Replaces the extract_intent() functionality for summary generation.
+    """
+    query_lower = query.lower()
+    columns = [col.lower() for col in df.columns]
+    
+    analysis = {
+        'type': 'general',
+        'has_time_data': False,
+        'has_inventory_data': False,
+        'has_returns_data': False,
+        'has_sales_data': False,
+        'has_margin_data': False,
+        'metrics': []
+    }
+    
+    # Detect data types based on column names and query content
+    inventory_indicators = ['oh_units', 'inventory', 'stock', 'days_supply', 'on_hand', 'current_on_hand']
+    returns_indicators = ['return', 'returns', 'defective', 'exchange', 'return_count', 'return_rate']
+    sales_indicators = ['revenue', 'sales', 'units_sold', 'quantity', 'total_revenue', 'total_sales']
+    margin_indicators = ['margin', 'profit', 'margin_pct', 'profit_margin']
+    time_indicators = ['date', 'time', 'period', 'timestamp', 'trend']
+    
+    # Check columns for indicators
+    for col in columns:
+        if any(indicator in col for indicator in inventory_indicators):
+            analysis['has_inventory_data'] = True
+        if any(indicator in col for indicator in returns_indicators):
+            analysis['has_returns_data'] = True
+        if any(indicator in col for indicator in sales_indicators):
+            analysis['has_sales_data'] = True
+        if any(indicator in col for indicator in margin_indicators):
+            analysis['has_margin_data'] = True
+        if any(indicator in col for indicator in time_indicators):
+            analysis['has_time_data'] = True
+    
+    # Check query content for additional context
+    if any(keyword in query_lower for keyword in ['return', 'returns', 'defective', 'exchange']):
+        analysis['has_returns_data'] = True
+    if any(keyword in query_lower for keyword in ['inventory', 'stock', 'on hand', 'overstock', 'out of stock']):
+        analysis['has_inventory_data'] = True
+    if any(keyword in query_lower for keyword in ['trend', 'over time', 'monthly', 'daily', 'weekly']):
+        analysis['has_time_data'] = True
+    
+    # Determine primary data type
+    if analysis['has_returns_data']:
+        analysis['type'] = 'returns'
+    elif analysis['has_inventory_data']:
+        analysis['type'] = 'inventory'
+    elif analysis['has_time_data']:
+        analysis['type'] = 'trends'
+    elif analysis['has_sales_data']:
+        analysis['type'] = 'sales'
+    
+    return analysis
 
 def generate_inventory_summary_prompt(data_summary: str, toolbox_context: dict = None) -> str:
     """Generate inventory-specific summary prompt with toolbox awareness"""
@@ -118,7 +180,7 @@ def generate_inventory_summary_prompt(data_summary: str, toolbox_context: dict =
     if toolbox_context and toolbox_context.get('tool_name'):
         tool_name = toolbox_context['tool_name']
         
-        if tool_name == 'get_out_of_stock_items':
+        if 'out_of_stock' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the out-of-stock detection tool. Focus on:
@@ -126,7 +188,7 @@ def generate_inventory_summary_prompt(data_summary: str, toolbox_context: dict =
             - Lost sales opportunities
             - Stock-out prevention strategies
             """
-        elif tool_name == 'get_overstock_items':
+        elif 'overstock' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the overstock detection tool. Focus on:
@@ -134,7 +196,7 @@ def generate_inventory_summary_prompt(data_summary: str, toolbox_context: dict =
             - Inventory liquidation strategies
             - Future purchasing adjustments
             """
-        elif tool_name == 'get_inventory_status':
+        elif 'inventory_status' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the general inventory status tool. Provide:
@@ -171,7 +233,7 @@ def generate_returns_summary_prompt(data_summary: str, toolbox_context: dict = N
     if toolbox_context and toolbox_context.get('tool_name'):
         tool_name = toolbox_context['tool_name']
         
-        if tool_name == 'get_return_trends':
+        if 'return_trends' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the returns trend tool. Focus on:
@@ -179,7 +241,7 @@ def generate_returns_summary_prompt(data_summary: str, toolbox_context: dict = N
             - Time-based patterns requiring attention
             - Forecast implications for return rates
             """
-        elif tool_name == 'get_return_analysis_by_store':
+        elif 'return_analysis_by_store' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the store-level returns tool. Focus on:
@@ -187,13 +249,95 @@ def generate_returns_summary_prompt(data_summary: str, toolbox_context: dict = N
             - Training or process improvement opportunities
             - Best practices from top-performing stores
             """
-        elif tool_name == 'get_customer_return_analysis':
+        elif 'customer_return_analysis' in tool_name:
             base_prompt += """
             
             **Tool Context**: This analysis used the customer returns tool. Focus on:
             - Customer segmentation insights
             - Repeat return behavior patterns
             - Customer retention and satisfaction implications
+            """
+    
+    return base_prompt
+
+def generate_sales_summary_prompt(data_summary: str, toolbox_context: dict = None) -> str:
+    """Generate sales-specific summary prompt with toolbox awareness"""
+    
+    base_prompt = f"""
+    You are a retail sales analyst. Analyze this sales data and provide actionable insights.
+    
+    {data_summary}
+    
+    Please provide:
+    1. A brief paragraph summarizing the sales performance
+    2. 2-3 specific sales insights (top performers, growth opportunities, concerning trends)
+    3. 1-2 actionable recommendations (inventory decisions, marketing focus, operational improvements)
+    
+    Focus on:
+    - Products or categories driving the most value
+    - Performance patterns that indicate opportunities or risks
+    - Specific actions to optimize sales performance
+    
+    Keep the response under 200 words and focus on actionable insights.
+    Format the response with clear sections using **bold** headers.
+    """
+    
+    # Add toolbox-specific context
+    if toolbox_context and toolbox_context.get('tool_name'):
+        tool_name = toolbox_context['tool_name']
+        
+        if 'top_selling' in tool_name:
+            base_prompt += """
+            
+            **Tool Context**: This analysis used the top selling items tool. Focus on:
+            - What makes these items successful
+            - Opportunities to replicate success with similar products
+            - Inventory and marketing priorities for top performers
+            """
+        elif 'top_margin' in tool_name:
+            base_prompt += """
+            
+            **Tool Context**: This analysis used the top margin items tool. Focus on:
+            - Profitability drivers and optimization opportunities
+            - Pricing strategy insights
+            - Product mix recommendations for better margins
+            """
+    
+    return base_prompt
+
+def generate_trends_summary_prompt(data_summary: str, toolbox_context: dict = None) -> str:
+    """Generate trends-specific summary prompt with toolbox awareness"""
+    
+    base_prompt = f"""
+    You are a retail trends analyst. Analyze this time-based data and provide actionable insights.
+    
+    {data_summary}
+    
+    Please provide:
+    1. A brief paragraph summarizing the key trends
+    2. 2-3 specific trend insights (growth patterns, seasonal effects, performance changes)
+    3. 1-2 forecasting or strategic recommendations
+    
+    Focus on:
+    - Direction and magnitude of trends
+    - Seasonal or cyclical patterns
+    - Implications for future business decisions
+    
+    Keep the response under 200 words and focus on actionable insights.
+    Format the response with clear sections using **bold** headers.
+    """
+    
+    # Add toolbox-specific context
+    if toolbox_context and toolbox_context.get('tool_name'):
+        tool_name = toolbox_context['tool_name']
+        
+        if 'sales_trends' in tool_name:
+            base_prompt += """
+            
+            **Tool Context**: This analysis used the sales trends tool. Focus on:
+            - Revenue and volume trend implications
+            - Seasonal planning recommendations
+            - Performance forecasting insights
             """
     
     return base_prompt
@@ -228,21 +372,13 @@ def generate_general_summary_prompt(data_summary: str, toolbox_context: dict = N
         """
         
         # Add tool-specific guidance
-        if 'top_selling' in tool_name:
-            base_prompt += """
-            Focus on sales performance leaders and what drives their success.
-            """
-        elif 'comparison' in tool_name:
+        if 'comparison' in tool_name:
             base_prompt += """
             Focus on the differences highlighted and their business implications.
             """
-        elif 'trends' in tool_name:
+        elif 'top_' in tool_name:
             base_prompt += """
-            Focus on trend direction, seasonality, and forecasting implications.
-            """
-        elif 'margin' in tool_name:
-            base_prompt += """
-            Focus on profitability insights and margin optimization opportunities.
+            Focus on what drives top performance and how to replicate success.
             """
     
     return base_prompt
@@ -273,9 +409,7 @@ def generate_parallel_summary(df, query, models_list, api_clients, bigquery_util
     start_time = time.time()
     
     # Determine the appropriate prompt based on data type
-    intent = extract_intent(query)
-    is_inventory_query = any(col for col in df.columns if any(keyword in col.lower() for keyword in ['oh_units', 'inventory', 'days_supply', 'stock_status']))
-    is_return_query = any(col for col in df.columns if any(keyword in col.lower() for keyword in ['return', 'defective', 'exchange']))
+    data_analysis = _analyze_data_content(df, query)
     
     # Build data summary
     data_summary = f"""
@@ -285,10 +419,14 @@ def generate_parallel_summary(df, query, models_list, api_clients, bigquery_util
     """
     
     # Select appropriate prompt
-    if is_return_query:
+    if data_analysis['type'] == 'returns':
         prompt = generate_returns_summary_prompt(data_summary, toolbox_context)
-    elif is_inventory_query:
+    elif data_analysis['type'] == 'inventory':
         prompt = generate_inventory_summary_prompt(data_summary, toolbox_context)
+    elif data_analysis['type'] == 'trends':
+        prompt = generate_trends_summary_prompt(data_summary, toolbox_context)
+    elif data_analysis['type'] == 'sales':
+        prompt = generate_sales_summary_prompt(data_summary, toolbox_context)
     else:
         prompt = generate_general_summary_prompt(data_summary, toolbox_context)
     
@@ -372,7 +510,8 @@ def generate_parallel_summary(df, query, models_list, api_clients, bigquery_util
             execution_time_ms=execution_time_ms,
             data_preview=data_preview,
             user_id=None,
-            session_id=None
+            session_id=None,
+            summary_method='parallel_mcp'
         )
     
     return {
@@ -417,11 +556,11 @@ def enhance_summary_with_toolbox_insights(summary: str, toolbox_context: dict) -
     
     # Add tool-specific insights
     tool_insights = ""
-    if tool_name == 'get_out_of_stock_items':
+    if 'out_of_stock' in tool_name:
         tool_insights = "\n\n**Tool Insight**: This analysis used advanced out-of-stock detection algorithms that consider recent sales velocity and seasonal patterns."
-    elif tool_name == 'get_overstock_items':
+    elif 'overstock' in tool_name:
         tool_insights = "\n\n**Tool Insight**: This analysis used sophisticated overstock detection that factors in days of supply, sales velocity, and historical turnover rates."
-    elif tool_name == 'get_inventory_status':
+    elif 'inventory_status' in tool_name:
         tool_insights = "\n\n**Tool Insight**: This comprehensive inventory analysis includes real-time stock levels, sales velocity, and predictive indicators."
     
     return summary + performance_note + tool_insights

@@ -1,80 +1,105 @@
-# Core Flask and Web Framework
-flask==3.0.0
-gunicorn==21.2.0
-
-# Database and BigQuery
-google-cloud-bigquery==3.15.0
-pandas==2.2.0
-numpy>=1.26.0
-db-dtypes==1.2.0
-
-# AI/ML Libraries
-google-generativeai==0.4.0
-openai==1.12.0
-anthropic==0.18.0
-httpx==0.27.0
-
-# Data Visualization
-plotly==5.18.0
-
-# Dashboard and Interactive Components
-dash==2.16.1
-dash-bootstrap-components==1.5.0
-
-# Caching and Session Management
-flask-caching==2.1.0
-redis==5.0.1
-
-# Security and Authentication
-firebase-admin==6.4.0
-flask-limiter==3.5.0
-
-# Retry Logic and Resilience
-tenacity==8.2.3
-
-# Google Cloud Services
-google-cloud-secret-manager==2.18.0
-google-cloud-billing==1.12.1
-google-cloud-storage==2.13.0
-
-# Configuration and Environment
-python-dotenv==1.0.1
-
-# Data Processing and Analysis
-# concurrent-futures is built into Python 3.2+
-
-# Development and Debugging (optional)
-flask-cors==4.0.0
-
-# Additional dependencies for enhanced features
-requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.4
-
-# Data export capabilities
-openpyxl==3.1.2
-xlsxwriter==3.1.9
-
-# Time and date utilities
-python-dateutil==2.8.2
-
-# JSON and data serialization
-ujson==5.9.0
-
-# Monitoring and logging
-structlog==23.2.0
-
-# Performance optimizations (optional)
-gevent==23.9.1
-
-# Testing dependencies (development only - commented out for production)
-# pytest==8.0.0
-# pytest-flask==1.3.0
-# pytest-mock==3.12.0
-# coverage==7.4.0
-
-# Code quality (development only - commented out for production)
-# black==24.0.0
-# flake8==7.0.0
-# mypy==1.8.0
-
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.14
+aiosignal==1.4.0
+annotated-types==0.7.0
+anthropic==0.59.0
+anyio==4.9.0
+attrs==25.3.0
+blinker==1.9.0
+CacheControl==0.14.3
+cachelib==0.13.0
+cachetools==5.5.2
+certifi==2025.7.14
+cffi==1.17.1
+charset-normalizer==3.4.2
+click==8.2.1
+cryptography==45.0.5
+dash==3.1.1
+db-dtypes==1.4.3
+Deprecated==1.2.18
+distro==1.9.0
+firebase_admin==7.0.0
+Flask==3.1.1
+Flask-Caching==2.3.1
+Flask-Limiter==3.12
+frozenlist==1.7.0
+google-ai-generativelanguage==0.6.15
+google-api-core==2.25.1
+google-api-python-client==2.177.0
+google-auth==2.40.3
+google-auth-httplib2==0.2.0
+google-cloud-bigquery==3.35.1
+google-cloud-bigquery-storage==2.32.0
+google-cloud-billing==1.16.3
+google-cloud-core==2.4.3
+google-cloud-firestore==2.21.0
+google-cloud-secret-manager==2.24.0
+google-cloud-storage==3.2.0
+google-crc32c==1.7.1
+google-generativeai==0.8.5
+google-resumable-media==2.7.2
+googleapis-common-protos==1.70.0
+grpc-google-iam-v1==0.14.2
+grpcio==1.74.0
+grpcio-status==1.71.2
+h11==0.16.0
+h2==4.2.0
+hpack==4.1.0
+httpcore==1.0.9
+httplib2==0.22.0
+httpx==0.28.1
+hyperframe==6.1.0
+idna==3.10
+importlib_metadata==8.7.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+jiter==0.10.0
+limits==5.4.0
+markdown-it-py==3.0.0
+MarkupSafe==3.0.2
+mdurl==0.1.2
+msgpack==1.1.1
+multidict==6.6.3
+narwhals==2.0.0
+nest-asyncio==1.6.0
+numpy==2.3.2
+openai==1.97.1
+ordered-set==4.1.0
+packaging==25.0
+pandas==2.3.1
+plotly==6.2.0
+propcache==0.3.2
+proto-plus==1.26.1
+protobuf==5.29.5
+pyarrow==21.0.0
+pyasn1==0.6.1
+pyasn1_modules==0.4.2
+pycparser==2.22
+pydantic==2.11.7
+pydantic_core==2.33.2
+Pygments==2.19.2
+PyJWT==2.10.1
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.1
+pytz==2025.2
+redis==6.2.0
+requests==2.32.4
+retrying==1.4.1
+rich==13.9.4
+rsa==4.9.1
+setuptools==80.9.0
+six==1.17.0
+sniffio==1.3.1
+tenacity==9.1.2
+toolbox-core==0.4.0
+tqdm==4.67.1
+typing-inspection==0.4.1
+typing_extensions==4.14.1
+tzdata==2025.2
+uritemplate==4.2.0
+urllib3==2.5.0
+Werkzeug==3.1.3
+wrapt==1.17.2
+yarl==1.20.1
+zipp==3.23.0
