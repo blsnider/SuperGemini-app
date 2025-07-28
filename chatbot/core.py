@@ -1,50 +1,35 @@
 import uuid
 import time
 import logging
-import traceback
 import concurrent.futures
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
-from chatbot.config import get_store_mappings, get_shop_mappings, get_available_models
-from chatbot.api_clients import APIClient
-from chatbot.bigquery_utils import BigQueryUtils
-from chatbot.query_patterns import extract_intent, get_enhanced_schema_prompt
-from chatbot.sql_generator import generate_sql
-from chatbot.executor import execute_query, format_results
-from chatbot.visualizer import create_visualization
-from chatbot.summarizer import generate_summary
+from .config import Config, get_store_mappings, get_shop_mappings, get_available_models
+from .api_clients import APIClient 
+from .bigquery_utils import BigQueryUtils
+from .query_patterns import extract_intent, get_enhanced_schema_prompt
+from .sql_generator import generate_sql_or_tool
+from .executor import execute_query, format_results
+from .visualizer import create_visualization
+from .summarizer import generate_summary
+
+# MCP Toolbox Integration
+try:
+    from toolbox_core import ToolboxSyncClient
+    TOOLBOX_AVAILABLE = True
+except ImportError:
+    TOOLBOX_AVAILABLE = False
+    logging.warning("MCP Toolbox not available. Falling back to direct BigQuery queries.")
 
 logger = logging.getLogger(__name__)
 
 class SuperGeminiRetailChatbot:
     def __init__(self, config):
         self.config = config
-        
-        # Initialize mappings with error handling
-        logger.info("Initializing store and shop mappings...")
-        try:
-            self.store_mappings = get_store_mappings()
-            logger.info(f"✅ Store mappings loaded: {len(self.store_mappings)} stores")
-            if self.store_mappings:
-                # Log a sample to verify structure
-                sample_store = next(iter(self.store_mappings.values()))
-                logger.info(f"Sample store mapping: {sample_store}")
-        except Exception as e:
-            logger.error(f"❌ Failed to load store mappings: {e}")
-            logger.error(f"Store mappings traceback: {traceback.format_exc()}")
-            self.store_mappings = {}
-        
-        try:
-            self.shop_mappings = get_shop_mappings()
-            logger.info(f"✅ Shop mappings loaded: {len(self.shop_mappings)} shops")
-        except Exception as e:
-            logger.error(f"❌ Failed to load shop mappings: {e}")
-            logger.error(f"Shop mappings traceback: {traceback.format_exc()}")
-            self.shop_mappings = {}
-        
-        # Initialize other components
+        self.store_mappings = get_store_mappings()
+        self.shop_mappings = get_shop_mappings()
         self.available_models = get_available_models()
-        self.api_client = APIClient()  # Updated to use your actual APIClient
+        self.api_clients = APIClient()
         self.bigquery_utils = BigQueryUtils(config)
         self.last_df = None
         self.last_query = None
@@ -58,6 +43,35 @@ class SuperGeminiRetailChatbot:
         # Cost tracking
         self.total_cost = 0.0
         self.query_costs = {}
+        
+        # MCP Toolbox initialization
+        self.toolbox = None
+        self.tools = {}
+        self.toolbox_enabled = False
+        
+        if TOOLBOX_AVAILABLE:
+            self._initialize_toolbox()
+
+    def _initialize_toolbox(self):
+        """Initialize MCP Toolbox client and load retail analytics tools"""
+        try:
+            # Your deployed Toolbox URL
+            toolbox_url = "https://toolbox-41815171183.us-central1.run.app"
+            
+            # Initialize the toolbox client
+            self.toolbox = ToolboxSyncClient(toolbox_url)
+            
+            # Load the toolset defined in tools.yaml
+            self.tools = self.toolbox.load_toolset('retail_analytics')
+            self.toolbox_enabled = True
+            
+            logger.info(f"MCP Toolbox initialized with {len(self.tools)} tools")
+            logger.info(f"Available tools: {list(self.tools.keys())}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize MCP Toolbox: {e}")
+            logger.info("Falling back to direct BigQuery queries")
+            self.toolbox_enabled = False
 
     def parallel_model_call(self, models: List[Dict], prompt: str) -> Tuple[List[Any], float]:
         """
@@ -76,10 +90,17 @@ class SuperGeminiRetailChatbot:
                 provider = model_info['provider']
                 model_name = model_info['name']
                 
-                logger.info(f"Calling {provider}/{model_name} in parallel")
-                
-                # Use the unified APIClient.call_model method
-                result = self.api_client.call_model(provider, model_name, prompt)
+                # Call appropriate API client based on provider
+                if provider == 'google' or model_name.startswith('gemini'):
+                    result = self.api_clients.google_client.generate_content(prompt)
+                elif provider == 'xai' or model_name.startswith('grok'):
+                    result = self.api_clients.xai_client.generate_content(prompt)
+                elif provider == 'anthropic' or model_name.startswith('claude'):
+                    result = self.api_clients.anthropic_client.generate_content(prompt)
+                elif provider == 'openai' or model_name.startswith(('gpt', 'o1')):
+                    result = self.api_clients.openai_client.generate_content(prompt)
+                else:
+                    raise ValueError(f"Unsupported provider/model: {provider}/{model_name}")
                 
                 execution_time = time.time() - start_time
                 
@@ -161,20 +182,11 @@ class SuperGeminiRetailChatbot:
         pricing = {
             'gemini-1.5-pro': {'input': 0.00125, 'output': 0.005},
             'gemini-1.5-flash': {'input': 0.00075, 'output': 0.003},
-            'gemini-2.5-pro': {'input': 0.00125, 'output': 0.005},
-            'gemini-2.5-flash': {'input': 0.00075, 'output': 0.003},
-            'gemini-2.0-flash-exp': {'input': 0.0005, 'output': 0.002},
-            'gpt-4o': {'input': 0.005, 'output': 0.015},
-            'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},
-            'o1-preview': {'input': 0.015, 'output': 0.06},
-            'claude-3.5-sonnet': {'input': 0.003, 'output': 0.015},
-            'claude-3.5-haiku': {'input': 0.0008, 'output': 0.004},
-            'claude-sonnet-4': {'input': 0.003, 'output': 0.015},
-            'claude-opus-4': {'input': 0.015, 'output': 0.075},
-            'grok-beta': {'input': 0.002, 'output': 0.01},
-            'grok-3': {'input': 0.0015, 'output': 0.008},
-            'grok-3-mini': {'input': 0.001, 'output': 0.005},
-            'grok-4': {'input': 0.002, 'output': 0.01}
+            'gpt-4': {'input': 0.03, 'output': 0.06},
+            'gpt-3.5-turbo': {'input': 0.0015, 'output': 0.002},
+            'claude-3-opus': {'input': 0.015, 'output': 0.075},
+            'claude-3-sonnet': {'input': 0.003, 'output': 0.015},
+            'grok-beta': {'input': 0.002, 'output': 0.01}  # Estimated
         }
         
         # Find matching pricing
@@ -191,9 +203,169 @@ class SuperGeminiRetailChatbot:
         cost = (input_tokens / 1000 * model_pricing['input']) + (output_tokens / 1000 * model_pricing['output'])
         return cost
 
+    def _execute_toolbox_query(self, query: str, intent: dict) -> Dict[str, Any]:
+        """
+        Execute query using MCP Toolbox instead of direct SQL generation
+        
+        Args:
+            query: The user's natural language query
+            intent: Extracted intent from query_patterns
+            
+        Returns:
+            Dictionary with execution results
+        """
+        try:
+            # Map intent to appropriate toolbox tool
+            tool_name, params = self._map_intent_to_tool(intent, query)
+            
+            if not tool_name or tool_name not in self.tools:
+                logger.warning(f"No matching tool found for intent: {intent}")
+                return {'success': False, 'error': 'No matching tool available', 'fallback_needed': True}
+            
+            logger.info(f"Executing tool: {tool_name} with params: {params}")
+            
+            # Execute the tool
+            tool = self.tools[tool_name]
+            start_time = time.time()
+            
+            result = tool(**params)
+            execution_time = int((time.time() - start_time) * 1000)
+            
+            # Convert result to DataFrame if it's not already
+            if isinstance(result, dict) and 'data' in result:
+                df = pd.DataFrame(result['data'])
+            elif isinstance(result, list):
+                df = pd.DataFrame(result)
+            elif isinstance(result, pd.DataFrame):
+                df = result
+            else:
+                logger.error(f"Unexpected result type from tool {tool_name}: {type(result)}")
+                return {'success': False, 'error': 'Invalid tool response format', 'fallback_needed': True}
+            
+            return {
+                'success': True,
+                'dataframe': df,
+                'tool_name': tool_name,
+                'execution_time_ms': execution_time,
+                'parameters': params,
+                'fallback_needed': False
+            }
+            
+        except Exception as e:
+            logger.error(f"Toolbox execution failed: {str(e)}")
+            return {'success': False, 'error': str(e), 'fallback_needed': True}
+
+    def _map_intent_to_tool(self, intent: dict, query: str) -> Tuple[str, dict]:
+        """
+        Map extracted intent to appropriate MCP Toolbox tool and parameters
+        
+        Args:
+            intent: Intent dictionary from extract_intent()
+            query: Original user query for parameter extraction
+            
+        Returns:
+            Tuple of (tool_name, parameters)
+        """
+        # Default parameters
+        params = {
+            'limit': intent.get('limit', 10),
+            'conditions': '',
+            'time_period': intent.get('time_period'),
+        }
+        
+        # Extract additional parameters from query
+        params.update(self._extract_query_parameters(query, intent))
+        
+        # Map based on intent characteristics
+        if intent.get('inventory_focus'):
+            if 'out_of_stock' in intent.get('metrics', []):
+                return 'get_out_of_stock_items', params
+            elif 'overstock' in intent.get('metrics', []):
+                return 'get_overstock_items', params
+            else:
+                return 'get_inventory_status', params
+                
+        elif intent.get('return_focus'):
+            if intent.get('time_series'):
+                return 'get_return_trends', params
+            elif 'store' in intent.get('dimensions', []):
+                return 'get_return_analysis_by_store', params
+            else:
+                return 'get_return_analysis', params
+                
+        elif intent.get('ranking') == 'top':
+            if 'sales' in intent.get('metrics', []):
+                return 'get_top_selling_items', params
+            elif 'margin' in intent.get('metrics', []):
+                return 'get_top_margin_items', params
+                
+        elif intent.get('comparison'):
+            return 'get_comparison_analysis', params
+            
+        elif intent.get('time_series'):
+            return 'get_sales_trends', params
+            
+        # Default fallback
+        if any(metric in intent.get('metrics', []) for metric in ['sales', 'revenue']):
+            return 'get_sales_analysis', params
+            
+        return None, params
+
+    def _extract_query_parameters(self, query: str, intent: dict) -> dict:
+        """
+        Extract specific parameters from the user query
+        
+        Args:
+            query: Original user query
+            intent: Extracted intent
+            
+        Returns:
+            Dictionary of extracted parameters
+        """
+        params = {}
+        query_lower = query.lower()
+        
+        # Extract store filters
+        if 'fargo' in query_lower:
+            params['store_filter'] = 'store_id = 64'
+        elif 'springfield' in query_lower:
+            params['store_filter'] = 'store_id = 65'
+        
+        # Extract shop/division filters
+        for shop_name, (div_num, desc) in self.shop_mappings.items():
+            if shop_name in query_lower:
+                params['shop_filter'] = f'division_number = "{div_num}"'
+                break
+        
+        # Extract date ranges
+        if 'last 30 days' in query_lower:
+            params['date_filter'] = 'transaction_datetime >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)'
+        elif 'last week' in query_lower:
+            params['date_filter'] = 'transaction_datetime >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)'
+        elif 'this month' in query_lower:
+            params['date_filter'] = 'EXTRACT(MONTH FROM transaction_datetime) = EXTRACT(MONTH FROM CURRENT_TIMESTAMP())'
+        
+        # Extract specific style or SKU
+        import re
+        style_match = re.search(r'style\s+(\w+)', query_lower)
+        if style_match:
+            params['style_filter'] = f'style = "{style_match.group(1)}"'
+        
+        # Combine conditions
+        conditions = []
+        for key in ['store_filter', 'shop_filter', 'date_filter', 'style_filter']:
+            if key in params:
+                conditions.append(params[key])
+        
+        if conditions:
+            params['conditions'] = ' AND '.join(conditions)
+        
+        return params
+
     def advanced_query(self, query: str, enable_web_search: bool = False, enable_code_execution: bool = False) -> Dict[str, Any]:
         """
         Handle advanced queries with web search and code execution capabilities.
+        Now enhanced with MCP Toolbox integration.
         
         Args:
             query: The user query
@@ -206,6 +378,45 @@ class SuperGeminiRetailChatbot:
         try:
             query_lower = query.lower()
             advanced_results = {}
+            
+            # Try MCP Toolbox first if available
+            if self.toolbox_enabled:
+                intent = extract_intent(query)
+                toolbox_result = self._execute_toolbox_query(query, intent)
+                
+                if toolbox_result['success']:
+                    # Process successful toolbox result
+                    df = toolbox_result['dataframe']
+                    self.last_df = df
+                    self.last_query = query
+                    
+                    if df is not None and not df.empty:
+                        self.last_results = df.to_dict('records')
+                        self.last_data = self.last_results
+                    
+                    results = format_results(df, self.config.preview_rows)
+                    
+                    return {
+                        'success': True,
+                        'error': None,
+                        'sql': f"[MCP Toolbox Tool: {toolbox_result['tool_name']}]",
+                        'results': results,
+                        'row_count': len(df) if df is not None else 0,
+                        'has_data': df is not None and not df.empty,
+                        'execution_times': {'toolbox_execution_ms': toolbox_result['execution_time_ms']},
+                        'toolbox_used': True,
+                        'tool_name': toolbox_result['tool_name'],
+                        'parameters': toolbox_result['parameters']
+                    }
+                elif not toolbox_result.get('fallback_needed', False):
+                    # Toolbox failed but no fallback needed
+                    return {
+                        'success': False,
+                        'error': toolbox_result.get('error', 'Toolbox execution failed'),
+                        'toolbox_attempted': True
+                    }
+                else:
+                    logger.info("Falling back to direct BigQuery after toolbox failure")
             
             # Check if query needs web search
             if enable_web_search and any(keyword in query_lower for keyword in [
@@ -338,7 +549,7 @@ class SuperGeminiRetailChatbot:
 
     def chat(self, user_query, model_name=None, user_id=None, session_id=None, use_parallel=False, models_list=None):
         """
-        Enhanced chat method with optional parallel model execution.
+        Enhanced chat method with MCP Toolbox integration and optional parallel model execution.
         
         Args:
             user_query: The user's query
@@ -348,12 +559,6 @@ class SuperGeminiRetailChatbot:
             use_parallel: Whether to use parallel model calls
             models_list: List of models for parallel execution
         """
-        logger.info(f"=== CHAT METHOD CALLED ===")
-        logger.info(f"Query: '{user_query}'")
-        logger.info(f"Model: {model_name}")
-        logger.info(f"Store mappings available: {len(self.store_mappings)} stores")
-        logger.info(f"Shop mappings available: {len(self.shop_mappings)} shops")
-        
         model_name = model_name or self.config.model_name
         query_id = str(uuid.uuid4())
         self.current_query_id = query_id
@@ -361,136 +566,169 @@ class SuperGeminiRetailChatbot:
         execution_times = {}
         query_cost = 0.0
 
-        try:
-            # SQL Generation with optional parallel processing
-            logger.info("=== STARTING SQL GENERATION ===")
-            if use_parallel and models_list:
-                # Use parallel model calls for SQL generation
-                parallel_results, parallel_cost = self.parallel_model_call(models_list, user_query)
-                query_cost += parallel_cost
+        # First try MCP Toolbox if available and appropriate
+        if self.toolbox_enabled:
+            intent = extract_intent(user_query)
+            toolbox_result = self._execute_toolbox_query(user_query, intent)
+            
+            if toolbox_result['success']:
+                # Process successful toolbox result
+                df = toolbox_result['dataframe']
+                self.last_df = df.copy() if df is not None else None
+                self.last_query = user_query
+                self.last_sql = f"[MCP Toolbox Tool: {toolbox_result['tool_name']}]"
                 
-                # Select best SQL result (simplified - take first successful one)
-                successful_results = [r for r in parallel_results if r['success']]
-                if successful_results:
-                    sql_query = successful_results[0]['result']
-                    sql_gen_time = successful_results[0]['execution_time'] * 1000  # Convert to ms
-                    # Log all model performances
-                    execution_times['parallel_models'] = {
-                        'total_models': len(models_list),
-                        'successful_models': len(successful_results),
-                        'model_results': parallel_results
-                    }
+                # Store results in multiple formats for compatibility
+                if df is not None and not df.empty:
+                    self.last_results = df.to_dict('records')
+                    self.last_data = self.last_results
                 else:
-                    # Fallback to single model
-                    logger.info("Parallel models failed, falling back to single model")
-                    sql_query, sql_gen_time = generate_sql(user_query, model_name, self.api_client, self.config)
-            else:
-                # Standard single model SQL generation
-                logger.info("Using single model SQL generation")
-                sql_query, sql_gen_time = generate_sql(user_query, model_name, self.api_client, self.config)
-            
-            logger.info(f"SQL generation completed in {sql_gen_time}ms")
-            logger.info(f"Generated SQL: {sql_query}")
-            
-            execution_times['sql_generation_ms'] = sql_gen_time
-            self.last_sql = sql_query
-
-            # Execute query
-            logger.info("=== EXECUTING QUERY ===")
-            df, error, query_exec_time = execute_query(sql_query, self.bigquery_utils.bq_client)
-            execution_times['query_execution_ms'] = query_exec_time
-            execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
-
-            # Store cost information
-            self.query_costs[query_id] = query_cost
-            execution_times['estimated_cost'] = query_cost
-
-            # Log to BigQuery with enhanced metadata
-            logger.info("=== LOGGING TO BIGQUERY ===")
-            try:
+                    self.last_results = None
+                    self.last_data = None
+                
+                execution_times['toolbox_execution_ms'] = toolbox_result['execution_time_ms']
+                execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
+                
+                # Log to BigQuery with toolbox metadata
                 self.bigquery_utils.log_query_to_bigquery(
                     query_id=query_id,
                     user_query=user_query,
-                    sql_query=sql_query,
-                    model_name=model_name,
-                    success=(error is None),
-                    error_message=error,
+                    sql_query=self.last_sql,
+                    model_name=f"toolbox_{toolbox_result['tool_name']}",
+                    success=True,
+                    error_message=None,
                     row_count=len(df) if df is not None else None,
                     execution_times=execution_times,
                     user_id=user_id or "anonymous",
                     session_id=session_id or "default"
                 )
-                logger.info("✅ Query logged successfully")
-            except Exception as log_error:
-                logger.error(f"❌ Failed to log query: {log_error}")
-                logger.error(f"Logging traceback: {traceback.format_exc()}")
-
-            if error:
-                logger.error(f"❌ Query execution failed: {error}")
-                # Clear last results on error
-                self.last_results = None
-                self.last_data = None
+                
+                results = format_results(df, self.config.preview_rows)
+                return {
+                    'success': True,
+                    'error': None,
+                    'sql': self.last_sql,
+                    'results': results,
+                    'row_count': len(df) if df is not None else 0,
+                    'has_data': df is not None and not df.empty,
+                    'query_id': query_id,
+                    'execution_times': execution_times,
+                    'estimated_cost': query_cost,
+                    'total_session_cost': self.total_cost,
+                    'toolbox_used': True,
+                    'tool_name': toolbox_result['tool_name'],
+                    'parameters': toolbox_result['parameters']
+                }
+            elif not toolbox_result.get('fallback_needed', False):
+                # Toolbox failed but shouldn't fallback
                 return {
                     'success': False,
-                    'error': error,
-                    'sql': sql_query,
+                    'error': toolbox_result.get('error', 'Toolbox execution failed'),
+                    'sql': None,
                     'results': None,
                     'chart': None,
                     'summary': None,
                     'query_id': query_id,
                     'execution_times': execution_times,
-                    'estimated_cost': query_cost
+                    'estimated_cost': query_cost,
+                    'toolbox_attempted': True
                 }
-
-            # Store results in multiple formats for compatibility
-            self.last_df = df.copy() if df is not None else None
-            self.last_query = user_query
-            
-            # Convert DataFrame to list of dictionaries for app.py compatibility
-            if df is not None and not df.empty:
-                self.last_results = df.to_dict('records')  # List of dicts
-                self.last_data = self.last_results  # Alias for chart generation
-                logger.info(f"✅ Query successful: {len(df)} rows returned")
             else:
-                self.last_results = None
-                self.last_data = None
-                logger.info("✅ Query successful: No data returned")
+                logger.info("Toolbox execution failed, falling back to SQL generation")
+
+        # Fallback to SQL Generation with optional parallel processing
+        if use_parallel and models_list:
+            # Use parallel model calls for SQL generation
+            parallel_results, parallel_cost = self.parallel_model_call(models_list, user_query)
+            query_cost += parallel_cost
             
-            results = format_results(df, self.config.preview_rows)
-            
-            return {
-                'success': True,
-                'error': None,
-                'sql': sql_query,
-                'results': results,
-                'row_count': len(df) if df is not None else 0,
-                'has_data': df is not None and not df.empty,
-                'query_id': query_id,
-                'execution_times': execution_times,
-                'estimated_cost': query_cost,
-                'total_session_cost': self.total_cost
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ CHAT METHOD FAILED: {e}")
-            logger.error(f"Chat method traceback: {traceback.format_exc()}")
-            
+            # Select best SQL result (simplified - take first successful one)
+            successful_results = [r for r in parallel_results if r['success']]
+            if successful_results:
+                sql_query = successful_results[0]['result']
+                sql_gen_time = successful_results[0]['execution_time'] * 1000  # Convert to ms
+                # Log all model performances
+                execution_times['parallel_models'] = {
+                    'total_models': len(models_list),
+                    'successful_models': len(successful_results),
+                    'model_results': parallel_results
+                }
+            else:
+                # Fallback to single model
+                sql_query, sql_gen_time = generate_sql_or_tool(user_query, model_name, self.api_clients, self.config)
+        else:
+            # Standard single model SQL generation
+            sql_query, sql_gen_time = generate_sql_or_tool(user_query, model_name, self.api_clients, self.config)
+        
+        execution_times['sql_generation_ms'] = sql_gen_time
+        self.last_sql = sql_query
+
+        # Execute query
+        df, error, query_exec_time = execute_query(sql_query, self.bigquery_utils.bq_client)
+        execution_times['query_execution_ms'] = query_exec_time
+        execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
+
+        # Store cost information
+        self.query_costs[query_id] = query_cost
+        execution_times['estimated_cost'] = query_cost
+
+        # Log to BigQuery with enhanced metadata
+        self.bigquery_utils.log_query_to_bigquery(
+            query_id=query_id,
+            user_query=user_query,
+            sql_query=sql_query,
+            model_name=model_name,
+            success=(error is None),
+            error_message=error,
+            row_count=len(df) if df is not None else None,
+            execution_times=execution_times,
+            user_id=user_id or "anonymous",
+            session_id=session_id or "default"
+        )
+
+        if error:
             # Clear last results on error
             self.last_results = None
             self.last_data = None
-            
             return {
                 'success': False,
-                'error': f"Chat processing failed: {str(e)}",
-                'sql': getattr(self, 'last_sql', 'N/A'),
+                'error': error,
+                'sql': sql_query,
                 'results': None,
                 'chart': None,
                 'summary': None,
                 'query_id': query_id,
                 'execution_times': execution_times,
                 'estimated_cost': query_cost,
-                'traceback': traceback.format_exc()
+                'toolbox_fallback_used': self.toolbox_enabled
             }
+
+        # Store results in multiple formats for compatibility
+        self.last_df = df.copy() if df is not None else None
+        self.last_query = user_query
+        
+        # Convert DataFrame to list of dictionaries for app.py compatibility
+        if df is not None and not df.empty:
+            self.last_results = df.to_dict('records')  # List of dicts
+            self.last_data = self.last_results  # Alias for chart generation
+        else:
+            self.last_results = None
+            self.last_data = None
+        
+        results = format_results(df, self.config.preview_rows)
+        return {
+            'success': True,
+            'error': None,
+            'sql': sql_query,
+            'results': results,
+            'row_count': len(df) if df is not None else 0,
+            'has_data': df is not None and not df.empty,
+            'query_id': query_id,
+            'execution_times': execution_times,
+            'estimated_cost': query_cost,
+            'total_session_cost': self.total_cost,
+            'toolbox_fallback_used': self.toolbox_enabled
+        }
 
     def generate_chart(self, chart_type: str = None):
         if not self.last_df:  
@@ -530,9 +768,9 @@ class SuperGeminiRetailChatbot:
             if use_parallel:
                 # Use multiple models for summary generation and comparison
                 summary_models = [
-                    {'provider': 'google', 'name': 'gemini-2.5-pro'},
-                    {'provider': 'anthropic', 'name': 'claude-3.5-sonnet-20241022'},
-                    {'provider': 'openai', 'name': 'gpt-4o'}
+                    {'provider': 'google', 'name': 'gemini-1.5-pro'},
+                    {'provider': 'anthropic', 'name': 'claude-3-sonnet'},
+                    {'provider': 'openai', 'name': 'gpt-4'}
                 ]
                 
                 summary_prompt = f"Summarize the following data analysis results for query: {self.last_query}\n\nData: {self.last_df.head(10).to_string()}"
@@ -555,7 +793,7 @@ class SuperGeminiRetailChatbot:
                         self.last_query, 
                         model_name or self.config.model_name, 
                         self.available_models, 
-                        self.api_client, 
+                        self.api_clients, 
                         self.bigquery_utils
                     )
             else:
@@ -565,7 +803,7 @@ class SuperGeminiRetailChatbot:
                     self.last_query, 
                     model_name or self.config.model_name, 
                     self.available_models, 
-                    self.api_client, 
+                    self.api_clients, 
                     self.bigquery_utils
                 )
             
@@ -596,15 +834,17 @@ class SuperGeminiRetailChatbot:
             # Track cost for this call
             start_time = time.time()
             
-            # Get model info and provider
-            if model_name not in self.available_models:
-                raise ValueError(f"Model {model_name} not available")
-            
-            model_config = self.available_models[model_name]
-            provider = model_config['provider']
-            
-            # Use the unified APIClient.call_model method
-            result = self.api_client.call_model(provider, model_name, prompt)
+            # Use your existing API clients to get response
+            if model_name.startswith('gemini'):
+                result = self.api_clients.google_client.generate_content(prompt)
+            elif model_name.startswith('grok'):
+                result = self.api_clients.xai_client.generate_content(prompt)
+            elif model_name.startswith('claude'):
+                result = self.api_clients.anthropic_client.generate_content(prompt)
+            elif model_name.startswith('gpt') or model_name.startswith('o1'):
+                result = self.api_clients.openai_client.generate_content(prompt)
+            else:
+                raise ValueError(f"Unsupported model: {model_name}")
             
             # Track cost
             execution_time = time.time() - start_time
@@ -624,7 +864,8 @@ class SuperGeminiRetailChatbot:
             'total_session_cost': self.total_cost,
             'queries_executed': len(self.query_costs),
             'query_costs': self.query_costs,
-            'average_cost_per_query': self.total_cost / len(self.query_costs) if self.query_costs else 0
+            'average_cost_per_query': self.total_cost / len(self.query_costs) if self.query_costs else 0,
+            'toolbox_enabled': self.toolbox_enabled
         }
 
     def reset_cost_tracking(self):
@@ -634,3 +875,14 @@ class SuperGeminiRetailChatbot:
         self.total_cost = 0.0
         self.query_costs = {}
         logger.info("Cost tracking reset for new session")
+
+    def get_toolbox_status(self) -> Dict[str, Any]:
+        """
+        Get status information about MCP Toolbox integration
+        """
+        return {
+            'toolbox_available': TOOLBOX_AVAILABLE,
+            'toolbox_enabled': self.toolbox_enabled,
+            'tools_loaded': len(self.tools) if self.tools else 0,
+            'available_tools': list(self.tools.keys()) if self.tools else []
+        }
