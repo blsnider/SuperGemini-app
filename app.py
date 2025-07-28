@@ -59,7 +59,7 @@ except ImportError as e:
     logging.warning(f"Security features not available due to missing dependencies: {e}")
     SECURITY_FEATURES_AVAILABLE = False
 
-# Smart Secret Loading (same as before)
+# Smart Secret Loading
 def load_secret(secret_name: str, project_id: str = None) -> str:
     """Load secret from GCP Secret Manager with smart fallback."""
     env_var_name = secret_name.upper().replace('-', '_')
@@ -111,8 +111,8 @@ def initialize_security_features(app: Flask) -> tuple:
         return firebase_app, limiter
     
     try:
-        # Initialize Firebase only in production environment
-        if environment == 'production' and gcp_available:
+        # Initialize Firebase only in production environment and if enabled
+        if environment == 'production' and gcp_available and os.getenv('ENABLE_FIREBASE', 'false').lower() == 'true':
             logger.info("Production environment - initializing Firebase...")
             firebase_cred_json = load_secret('firebase-cred-json')
             if firebase_cred_json:
@@ -122,9 +122,9 @@ def initialize_security_features(app: Flask) -> tuple:
                     firebase_app = initialize_app(cred)
                     logger.info("✅ Firebase initialized successfully")
                 except Exception as e:
-                    logger.error(f"Firebase initialization failed: {e}")
+                    logger.warning(f"Firebase initialization failed: {e}")
             else:
-                logger.info("No Firebase credentials found")
+                logger.info("No Firebase credentials found - skipping")
         else:
             logger.info(f"Environment: {environment} - skipping Firebase initialization")
         
@@ -134,7 +134,7 @@ def initialize_security_features(app: Flask) -> tuple:
         redis_db = int(os.getenv('REDIS_DB', '0'))
         
         try:
-            redis_client = redis.Redis(host=redis_host, port=redis_port, db=redis_db, socket_timeout=5)
+            redis_client = redis.Redis(host=redis_host, port=redis_port, db=redis_db, socket_timeout=2)
             redis_client.ping()
             
             limiter = Limiter(
@@ -145,7 +145,7 @@ def initialize_security_features(app: Flask) -> tuple:
             )
             logger.info("✅ Redis-backed rate limiter initialized")
         except Exception as e:
-            logger.warning(f"Redis connection failed: {e}")
+            logger.info(f"Redis not available, using in-memory rate limiter: {e}")
             limiter = Limiter(
                 key_func=get_remote_address,
                 app=app,
@@ -183,10 +183,7 @@ def load_api_keys():
         for key, value in api_keys.items():
             if value:
                 os.environ[key] = value
-                logger.info(f"✅ {key} loaded successfully")
                 loaded_count += 1
-            else:
-                logger.warning(f"⚠️  {key} not found")
         
         logger.info(f"✅ {loaded_count}/{len(api_keys)} API keys loaded successfully")
         
@@ -212,7 +209,7 @@ try:
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     
     from chatbot.config import get_available_models, get_store_mappings, get_shop_mappings
-    from chatbot.core import SuperGeminiRetailChatbot  # Fixed import path
+    from chatbot.core import SuperGeminiRetailChatbot
     logger.info("✅ All MCP-only application modules loaded successfully")
     
 except Exception as e:
@@ -226,7 +223,7 @@ cache = Cache(config={'CACHE_TYPE': 'simple', 'CACHE_DEFAULT_TIMEOUT': 300})
 # Configuration
 @dataclass
 class AppConfig:
-    bq_project: str = os.getenv('BQ_PROJECT', 'sis-sandbox-463113')  # Updated project ID
+    bq_project: str = os.getenv('BQ_PROJECT', 'sis-sandbox-463113')
     model_name: str = os.getenv('DEFAULT_MODEL', 'gemini-2.5-pro')
     preview_rows: int = int(os.getenv('PREVIEW_ROWS', '20'))
     enable_auth: bool = os.getenv('ENABLE_AUTH', 'False').lower() == 'true'
@@ -362,10 +359,12 @@ except Exception as e:
 def index() -> str:
     """Serve the main HTML page."""
     try:
+        # First try to use Flask's template system
         return render_template('index.html')
     except Exception as e:
         logger.error(f"Error serving index.html: {e}")
         return f"Error loading page: {str(e)}", 500
+
 
 @app.route('/models', methods=['GET'])
 def get_models() -> Dict[str, Any]:
@@ -428,7 +427,7 @@ def chat() -> Dict[str, Any]:
             }), 500
         
         # Add to history
-        results_count = len(result.get('results', [])) if result.get('success') else 0
+        results_count = result.get('row_count', 0) if result.get('success') else 0
         add_to_history(query, results_count)
         
         # Add system information to response
@@ -445,8 +444,8 @@ def chat() -> Dict[str, Any]:
             'system_mode': 'MCP-Only'
         }), 500
 
-@app.route('/chart', methods=['POST'])
-@optional_auth
+@app.route('/generate_chart', methods=['POST'])
+@optional_auth  
 def generate_chart():
     """Generate chart from last query results."""
     if not chatbot:
@@ -466,7 +465,7 @@ def generate_chart():
             'error': str(e)
         }), 500
 
-@app.route('/summary', methods=['POST'])
+@app.route('/generate_summary', methods=['POST'])
 @optional_auth
 def generate_summary():
     """Generate AI summary of last query results."""
@@ -487,6 +486,49 @@ def generate_summary():
             'error': str(e)
         }), 500
 
+@app.route('/export', methods=['POST'])
+@optional_auth
+def export_data():
+    """Export last query results"""
+    if not chatbot or not chatbot.last_results:
+        return jsonify({'success': False, 'error': 'No data available to export'}), 400
+    
+    try:
+        data = request.json or {}
+        export_format = data.get('format', 'csv').lower()
+        
+        if export_format == 'csv':
+            import io
+            import csv
+            
+            output = io.StringIO()
+            if chatbot.last_results:
+                writer = csv.DictWriter(output, fieldnames=chatbot.last_results[0].keys())
+                writer.writeheader()
+                writer.writerows(chatbot.last_results)
+            
+            return jsonify({
+                'success': True,
+                'data': output.getvalue(),
+                'filename': f'query_results_{int(time.time())}.csv',
+                'mime_type': 'text/csv'
+            })
+            
+        elif export_format == 'json':
+            import json
+            return jsonify({
+                'success': True,
+                'data': json.dumps(chatbot.last_results, indent=2),
+                'filename': f'query_results_{int(time.time())}.json',
+                'mime_type': 'application/json'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Unsupported format'}), 400
+            
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/suggest', methods=['GET'])
 def suggest():
     """Provide MCP-optimized query suggestions."""
@@ -494,13 +536,14 @@ def suggest():
         query = request.args.get('q', '').strip().lower()
         
         if not query:
-            return jsonify({'suggestions': MCP_SAMPLE_QUERIES[:8]})
+            suggestions = [{'text': q, 'type': 'template'} for q in MCP_SAMPLE_QUERIES[:8]]
+            return jsonify({'success': True, 'suggestions': suggestions})
         
         # Filter MCP sample queries based on input
-        matching_suggestions = [
-            suggestion for suggestion in MCP_SAMPLE_QUERIES
-            if query in suggestion.lower()
-        ]
+        matching_suggestions = []
+        for suggestion in MCP_SAMPLE_QUERIES:
+            if query in suggestion.lower():
+                matching_suggestions.append({'text': suggestion, 'type': 'template'})
         
         # If no direct matches, try partial word matching
         if not matching_suggestions:
@@ -508,20 +551,23 @@ def suggest():
             for suggestion in MCP_SAMPLE_QUERIES:
                 suggestion_lower = suggestion.lower()
                 if any(word in suggestion_lower for word in query_words):
-                    matching_suggestions.append(suggestion)
+                    matching_suggestions.append({'text': suggestion, 'type': 'template'})
+        
+        # Add history suggestions
+        history = get_query_history()
+        for item in history:
+            if query in item['query'].lower():
+                matching_suggestions.append({
+                    'text': item['query'],
+                    'type': 'history',
+                    'results_count': item.get('results_count', 0)
+                })
         
         # Limit to top 8 suggestions
         matching_suggestions = matching_suggestions[:8]
         
-        # Add some context-aware suggestions
-        if 'store' in query and '64' in query:
-            matching_suggestions.insert(0, "inventory status for store 64")
-        elif 'shop' in query and '3' in query:
-            matching_suggestions.insert(0, "top selling items in shop 3")
-        elif 'top' in query and 'sales' in query:
-            matching_suggestions.insert(0, "top 10 selling products by revenue")
-        
         return jsonify({
+            'success': True,
             'suggestions': matching_suggestions,
             'query': query,
             'count': len(matching_suggestions),
@@ -531,7 +577,8 @@ def suggest():
     except Exception as e:
         logger.error(f"Suggestion endpoint error: {str(e)}")
         return jsonify({
-            'suggestions': MCP_SAMPLE_QUERIES[:5],
+            'success': False,
+            'suggestions': [{'text': q, 'type': 'template'} for q in MCP_SAMPLE_QUERIES[:5]],
             'error': 'Failed to generate suggestions'
         }), 500
 
@@ -541,9 +588,13 @@ def cost_summary():
     try:
         if not chatbot:
             return jsonify({
+                'success': False,
                 'error': 'MCP chatbot not initialized',
-                'total_cost': 0.0,
-                'queries_executed': 0
+                'cost_summary': {
+                    'total_session_cost': 0.0,
+                    'queries_executed': 0,
+                    'average_cost_per_query': 0.0
+                }
             }), 500
         
         cost_data = chatbot.get_cost_summary()
@@ -560,8 +611,11 @@ def cost_summary():
         return jsonify({
             'success': False,
             'error': str(e),
-            'total_cost': 0.0,
-            'queries_executed': 0
+            'cost_summary': {
+                'total_session_cost': 0.0,
+                'queries_executed': 0,
+                'average_cost_per_query': 0.0
+            }
         }), 500
 
 @app.route('/reset_costs', methods=['POST'])
@@ -570,6 +624,7 @@ def reset_costs():
     try:
         if not chatbot:
             return jsonify({
+                'success': False,
                 'error': 'MCP chatbot not initialized'
             }), 500
         
@@ -594,8 +649,13 @@ def toolbox_status():
     try:
         if not chatbot:
             return jsonify({
+                'success': False,
                 'error': 'MCP chatbot not initialized',
-                'toolbox_available': False
+                'toolbox_status': {
+                    'toolbox_available': False,
+                    'toolbox_enabled': False,
+                    'available_tools': []
+                }
             }), 500
         
         status = chatbot.get_toolbox_status()
@@ -612,27 +672,59 @@ def toolbox_status():
         return jsonify({
             'success': False,
             'error': str(e),
-            'toolbox_available': False
+            'toolbox_status': {
+                'toolbox_available': False,
+                'toolbox_enabled': False,
+                'available_tools': []
+            }
         }), 500
 
-@app.route('/query-history', methods=['GET'])
-def query_history():
-    """Get recent query history."""
+@app.route('/history', methods=['GET'])
+def history():
+    """Get query history with properly formatted response"""
     try:
-        history = get_query_history()
-        recent_queries = [item['query'] for item in history[:10]]
+        history_data = get_query_history()
+        
+        # Format the response to match what frontend expects
+        formatted_history = []
+        for item in history_data:
+            formatted_history.append({
+                'query': item['query'],
+                'timestamp': item['timestamp'],
+                'results_count': item.get('results_count', 0)
+            })
         
         return jsonify({
-            'recent_queries': recent_queries,
-            'count': len(recent_queries),
-            'system_mode': 'MCP-Only'
+            'success': True,
+            'history': formatted_history
         })
         
     except Exception as e:
-        logger.error(f"Query history endpoint error: {str(e)}")
+        logger.error(f"History endpoint error: {e}")
         return jsonify({
-            'recent_queries': [],
-            'error': 'Failed to fetch query history'
+            'success': False,
+            'error': str(e),
+            'history': []
+        }), 500
+
+@app.route('/clear_history', methods=['POST'])
+@optional_auth
+def clear_history():
+    """Clear query history"""
+    try:
+        session['query_history'] = []
+        session.modified = True
+        
+        return jsonify({
+            'success': True,
+            'message': 'History cleared successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Clear history error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
 
 @app.route('/system_info', methods=['GET'])

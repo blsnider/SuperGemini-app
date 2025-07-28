@@ -220,6 +220,7 @@
             white-space: nowrap;
         }
         
+        /* FIXED DROPDOWN STYLES */
         select {
             padding: 10px 14px;
             border: 2px solid #e0e7ff;
@@ -229,12 +230,39 @@
             cursor: pointer;
             transition: all 0.3s ease;
             min-width: 200px;
+            /* Fix dropdown appearance */
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 40px;
         }
         
         select:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        /* Fix optgroup styling */
+        select optgroup {
+            font-weight: bold;
+            color: #374151;
+            background: #f9fafb;
+            padding: 8px 0;
+        }
+        
+        select option {
+            padding: 8px 12px;
+            background: white;
+            color: #374151;
+        }
+        
+        select option:hover {
+            background: #f3f4f6;
         }
         
         .advanced-options {
@@ -727,6 +755,215 @@
             }, 5000);
         });
         
+        // Enhanced escapeHtml function with robust data handling
+        function escapeHtml(unsafe) {
+            // Add type checking and graceful handling
+            if (typeof unsafe !== 'string') {
+                if (unsafe === null || unsafe === undefined) {
+                    return '';
+                }
+                
+                // If it's an array or object, convert to formatted string
+                try {
+                    if (Array.isArray(unsafe)) {
+                        // If it's an array of objects (table data), format as table
+                        if (unsafe.length > 0 && typeof unsafe[0] === 'object') {
+                            return formatArrayAsTable(unsafe);
+                        }
+                        return unsafe.join('\n');
+                    } else if (typeof unsafe === 'object') {
+                        return JSON.stringify(unsafe, null, 2);
+                    } else {
+                        return String(unsafe);
+                    }
+                } catch (e) {
+                    console.error('Error converting data to string:', e);
+                    return '[Error displaying data]';
+                }
+            }
+            
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function formatArrayAsTable(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                return 'No data';
+            }
+            
+            // Get headers from first object
+            const headers = Object.keys(data[0]);
+            
+            // Calculate column widths
+            const colWidths = {};
+            headers.forEach(header => {
+                colWidths[header] = Math.max(
+                    header.length,
+                    ...data.slice(0, 20).map(row => String(row[header] || '').length)
+                );
+            });
+            
+            // Create header row
+            let table = headers.map(h => h.padEnd(colWidths[h])).join(' | ') + '\n';
+            table += headers.map(h => '-'.repeat(colWidths[h])).join('-|-') + '\n';
+            
+            // Add data rows (limit to first 20 for display)
+            data.slice(0, 20).forEach(row => {
+                table += headers.map(h => String(row[h] || '').padEnd(colWidths[h])).join(' | ') + '\n';
+            });
+            
+            if (data.length > 20) {
+                table += `\n... and ${data.length - 20} more rows`;
+            }
+            
+            return table;
+        }
+
+        function buildResponseContent(data, modelName) {
+            let content = '';
+            
+            // Add results header with row count
+            if (data.has_data && data.row_count > 0) {
+                content += `<div class="results-header">
+                    <span><strong>Query Results</strong></span>
+                    <span style="background: rgba(255, 255, 255, 0.7); padding: 4px 12px; border-radius: 20px; font-size: 0.9em;">${data.row_count.toLocaleString()} total rows</span>
+                </div>`;
+            }
+            
+            content += '<strong>Results:</strong><br/>';
+            content += `<small style="color: #666;">Generated by ${modelName}</small>`;
+            
+            // Add execution time
+            if (data.execution_times) {
+                content += `<small style="color: #666; margin-left: 10px;">Total time: ${data.execution_times.total_ms}ms</small>`;
+                
+                // Show summary generation time if available
+                if (data.execution_times.summary_generation_ms) {
+                    content += `<small style="color: #666; margin-left: 10px;">(Summary: ${data.execution_times.summary_generation_ms}ms)</small>`;
+                }
+            }
+            
+            // Add cost info
+            if (data.estimated_cost !== undefined) {
+                content += `<small style="color: #666; margin-left: 10px;">Cost: ${data.estimated_cost.toFixed(4)}</small>`;
+            }
+            
+            content += '<br/>';
+            
+            // Add MCP tool info if used
+            if (data.toolbox_used && data.tool_name) {
+                content += '<div style="background: rgba(139, 92, 246, 0.1); padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
+                content += '<strong>🔧 MCP Tool Used:</strong><br/>';
+                content += `• Tool: ${data.tool_name}<br/>`;
+                if (data.parameters) {
+                    content += `• Parameters: ${JSON.stringify(data.parameters, null, 1).replace(/\n/g, ' ')}<br/>`;
+                }
+                content += '</div>';
+            }
+            
+            // AUTO-GENERATED SUMMARY DISPLAY
+            if (data.auto_summary) {
+                content += '<div class="summary-box" style="margin: 20px 0;">';
+                content += '<h4>🤖 AI Insights (Auto-Generated)</h4>';
+                content += data.auto_summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+                content += '</div>';
+            } else if (data.summary_error) {
+                content += '<div style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
+                content += '<strong>⚠️ Auto-Summary Failed:</strong><br/>';
+                content += `${data.summary_error}<br/>`;
+                content += '<small>You can still generate a summary manually using the button below.</small>';
+                content += '</div>';
+            }
+            
+            // Handle results display - check if we have string or structured data
+            let resultsToDisplay = '';
+            
+            if (typeof data.results === 'string') {
+                // Backend sent formatted string - use it directly
+                resultsToDisplay = data.results;
+            } else if (data.results_data && Array.isArray(data.results_data)) {
+                // We have structured data - format it
+                resultsToDisplay = formatArrayAsTable(data.results_data);
+            } else if (data.results) {
+                // Fallback - try to format whatever we got
+                resultsToDisplay = escapeHtml(data.results);
+            } else {
+                resultsToDisplay = 'No results data received';
+            }
+            
+            content += '<div class="results-table">' + escapeHtml(resultsToDisplay) + '</div>';
+            
+            // Show truncation info
+            if (data.has_data && data.row_count > 20) {
+                content += `<div style="color: #666; font-style: italic; margin-top: 10px; text-align: center;">`;
+                content += `Showing first 20 rows of ${data.row_count.toLocaleString()} total results`;
+                content += `</div>`;
+            }
+            
+            // Add action buttons
+            if (data.has_data) {
+                content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
+                content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
+                
+                // Only show manual summary button if auto-summary failed or wasn't generated
+                if (!data.auto_summary) {
+                    content += `<button class="tertiary-button" onclick="generateSummary(${currentMessageId})">💡 Generate Summary</button>`;
+                } else {
+                    content += `<button class="tertiary-button" onclick="regenerateSummary(${currentMessageId})" style="opacity: 0.7;">🔄 Regenerate Summary</button>`;
+                }
+                
+                content += '</div>';
+            }
+            
+            content += `<div id="chart-${currentMessageId}" class="chart-container"></div>`;
+            content += `<div id="summary-${currentMessageId}"></div>`;
+            
+            // Show SQL/Tool info
+            content += '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: #667eea; font-weight: 500;">🔧 Tool Information</summary>';
+            if (data.sql) {
+                content += '<div class="sql-box">' + escapeHtml(data.sql) + '</div>';
+            }
+            if (data.tool_name && data.parameters) {
+                content += '<div style="margin-top: 10px; font-family: monospace; font-size: 0.9em;">';
+                content += `<strong>Tool:</strong> ${data.tool_name}<br/>`;
+                content += `<strong>Parameters:</strong><br/>${escapeHtml(JSON.stringify(data.parameters, null, 2))}`;
+                content += '</div>';
+            }
+            content += '</details>';
+            
+            return content;
+        }
+
+        function buildErrorContent(data, modelName) {
+            let content = `<strong>Query failed:</strong> ${escapeHtml(data.error)}<br/><br/>`;
+            content += `<strong>Model used:</strong> ${modelName}<br/>`;
+            
+            if (data.sql) {
+                content += '<strong>Generated SQL:</strong><br/><div class="sql-box">' + escapeHtml(data.sql) + '</div>';
+            }
+            
+            if (data.tool_name) {
+                content += `<strong>MCP Tool:</strong> ${data.tool_name}<br/>`;
+                if (data.parameters) {
+                    content += `<strong>Parameters:</strong> ${JSON.stringify(data.parameters, null, 2)}<br/>`;
+                }
+            }
+            
+            content += '<br/><strong>💡 Troubleshooting Tips:</strong><ul>';
+            content += '<li>Try rephrasing your question</li>';
+            content += '<li>Check if store/city names are spelled correctly</li>';
+            content += '<li>Specify time periods clearly (e.g., "last month", "in 2025")</li>';
+            content += '<li>Try a different AI model</li>';
+            content += '<li>Ensure MCP Toolbox server is running</li>';
+            content += '</ul>';
+            
+            return content;
+        }
+        
         async function loadModels() {
             try {
                 const response = await fetch('/models');
@@ -949,9 +1186,9 @@
         }
         
         function updateCostDisplay() {
-            document.getElementById('totalCost').textContent = `$${currentCostInfo.total_session_cost.toFixed(4)}`;
+            document.getElementById('totalCost').textContent = `${currentCostInfo.total_session_cost.toFixed(4)}`;
             document.getElementById('queryCount').textContent = currentCostInfo.queries_executed;
-            document.getElementById('avgCost').textContent = `$${currentCostInfo.average_cost_per_query.toFixed(4)}`;
+            document.getElementById('avgCost').textContent = `${currentCostInfo.average_cost_per_query.toFixed(4)}`;
         }
         
         async function checkHealth() {
@@ -1000,7 +1237,7 @@
         }
         
         function submitAdvancedQuery() {
-            executeQuery('/advanced_query', true);
+            executeQuery('/chat', true);
         }
         
         async function executeQuery(endpoint, isAdvanced) {
@@ -1076,112 +1313,18 @@
             }
         }
         
-        function buildResponseContent(data, modelName) {
-            let content = '';
-            
-            // Add results header with row count
-            if (data.has_data && data.row_count > 0) {
-                content += `<div class="results-header">
-                    <span><strong>Query Results</strong></span>
-                    <span style="background: rgba(255, 255, 255, 0.7); padding: 4px 12px; border-radius: 20px; font-size: 0.9em;">${data.row_count.toLocaleString()} total rows</span>
-                </div>`;
-            }
-            
-            content += '<strong>Results:</strong><br/>';
-            content += `<small style="color: #666;">Generated by ${modelName}</small>`;
-            
-            // Add execution time
-            if (data.execution_times) {
-                content += `<small style="color: #666; margin-left: 10px;">Total time: ${data.execution_times.total_ms}ms</small>`;
-            }
-            
-            // Add cost info
-            if (data.estimated_cost) {
-                content += `<small style="color: #666; margin-left: 10px;">Cost: $${data.estimated_cost.toFixed(4)}</small>`;
-            }
-            
-            content += '<br/>';
-            
-            // Add weighting info if applied
-            if (data.weighting_applied && data.summary_stats) {
-                content += '<div style="background: rgba(102, 126, 234, 0.1); padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
-                content += '<strong>🎯 Inventory Analysis Applied:</strong><br/>';
-                if (data.summary_stats.urgent_reorders > 0) {
-                    content += `• ${data.summary_stats.urgent_reorders} urgent reorders needed<br/>`;
-                }
-                content += `• ${data.summary_stats.items_needing_attention} items need attention<br/>`;
-                content += `• ${data.summary_stats.avg_coverage_percentage.toFixed(1)}% average coverage<br/>`;
-                content += `• ${data.summary_stats.total_skus} SKUs analyzed`;
-                content += '</div>';
-            }
-            
-            // Add advanced features info
-            if (data.advanced_features) {
-                content += '<div style="background: rgba(139, 92, 246, 0.1); padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
-                content += '<strong>⚡ Advanced Features Used:</strong><br/>';
-                if (data.advanced_features.web_search) {
-                    content += '• Web search integration enabled<br/>';
-                }
-                if (data.advanced_features.code_execution) {
-                    content += '• Code execution analysis performed<br/>';
-                }
-                content += '</div>';
-            }
-            
-            content += '<div class="results-table">' + escapeHtml(data.results) + '</div>';
-            
-            // Show truncation info
-            if (data.has_data && data.row_count > 20) {
-                content += `<div style="color: #666; font-style: italic; margin-top: 10px; text-align: center;">`;
-                content += `Showing first 20 rows of ${data.row_count.toLocaleString()} total results`;
-                content += `</div>`;
-            }
-            
-            // Add action buttons
-            if (data.has_data) {
-                content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
-                content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
-                content += `<button class="tertiary-button" onclick="generateSummary(${currentMessageId})">💡 Generate Summary</button>`;
-                content += '</div>';
-            }
-            
-            content += `<div id="chart-${currentMessageId}" class="chart-container"></div>`;
-            content += `<div id="summary-${currentMessageId}"></div>`;
-            
-            content += '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: #667eea; font-weight: 500;">📝 View SQL Query</summary>';
-            content += '<div class="sql-box">' + escapeHtml(data.sql) + '</div></details>';
-            
-            return content;
-        }
-        
-        function buildErrorContent(data, modelName) {
-            let content = `<strong>Query failed:</strong> ${escapeHtml(data.error)}<br/><br/>`;
-            content += `<strong>Model used:</strong> ${modelName}<br/>`;
-            
-            if (data.sql) {
-                content += '<strong>Generated SQL:</strong><br/><div class="sql-box">' + escapeHtml(data.sql) + '</div>';
-            }
-            
-            content += '<br/><strong>💡 Troubleshooting Tips:</strong><ul>';
-            content += '<li>Try rephrasing your question</li>';
-            content += '<li>Check if store/city names are spelled correctly</li>';
-            content += '<li>Specify time periods clearly (e.g., "last month", "in 2025")</li>';
-            content += '<li>Try a different AI model</li>';
-            content += '<li>Use the advanced query option for complex requests</li>';
-            content += '</ul>';
-            
-            return content;
-        }
-        
         async function generateChart(messageId) {
             const chartDiv = document.getElementById('chart-' + messageId);
             chartDiv.innerHTML = '<div class="loading" style="display: block;"><div class="spinner"></div><p>Generating chart...</p></div>';
             
             try {
+                // Send request to generate chart
                 const response = await fetch('/generate_chart', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({})
+                    body: JSON.stringify({
+                        chart_type: 'auto' // Let the backend decide
+                    })
                 });
                 
                 const data = await response.json();
@@ -1236,6 +1379,38 @@
                 }
             } catch (error) {
                 summaryDiv.innerHTML = '<div style="color: red; padding: 10px;">Error generating summary: ' + error.message + '</div>';
+            }
+        }
+
+        // Add this new function for regenerating summaries
+        async function regenerateSummary(messageId) {
+            const summaryDiv = document.getElementById('summary-' + messageId);
+            const selectedModel = document.getElementById('modelSelect').value;
+            
+            summaryDiv.innerHTML = '<div class="loading" style="display: block;"><div class="spinner"></div><p>Regenerating insights with ' + selectedModel + '...</p></div>';
+            
+            try {
+                const response = await fetch('/generate_summary', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        use_parallel: false
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    summaryDiv.innerHTML = '<div class="summary-box">' + 
+                        '<h4>🤖 AI Insights (Regenerated)</h4>' + 
+                        data.summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') + 
+                        '</div>';
+                } else {
+                    summaryDiv.innerHTML = '<div style="color: red; padding: 10px;">Failed to regenerate summary: ' + (data.error || 'Unknown error') + '</div>';
+                }
+            } catch (error) {
+                summaryDiv.innerHTML = '<div style="color: red; padding: 10px;">Error regenerating summary: ' + error.message + '</div>';
             }
         }
         
@@ -1301,15 +1476,6 @@
             
             // Scroll to top to see new message
             chatHistory.scrollTop = 0;
-        }
-        
-        function escapeHtml(unsafe) {
-            return unsafe
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
         }
         
         // Enter key support
@@ -1383,91 +1549,6 @@
             clearQueryDraft();
             originalSubmitAdvancedQuery();
         };
-        
-        // Smart model recommendations
-        function getRecommendedModel() {
-            const query = document.getElementById('queryInput').value.toLowerCase();
-            const webSearch = document.getElementById('enableWebSearch').checked;
-            const codeExecution = document.getElementById('enableCodeExecution').checked;
-            
-            // Complex reasoning queries
-            if (query.includes('analyze') || query.includes('compare') || query.includes('correlation') || query.includes('trend')) {
-                if (codeExecution) return 'claude-sonnet-4-20250514';
-                return 'gemini-2.5-pro';
-            }
-            
-            // Creative or open-ended queries
-            if (query.includes('suggest') || query.includes('recommend') || query.includes('strategy')) {
-                return 'claude-opus-4-20250514';
-            }
-            
-            // Quick/simple queries
-            if (query.length < 50 && !webSearch && !codeExecution) {
-                return 'gemini-2.5-flash';
-            }
-            
-            // Code or technical queries
-            if (query.includes('sql') || query.includes('code') || query.includes('technical')) {
-                return 'claude-sonnet-4-20250514';
-            }
-            
-            // Current events or real-time data
-            if (webSearch || query.includes('current') || query.includes('recent') || query.includes('latest')) {
-                return 'grok-4-0709';
-            }
-            
-            // Default
-            return 'gemini-2.5-pro';
-        }
-        
-        // Smart model switching based on query
-        document.getElementById('queryInput').addEventListener('blur', function() {
-            if (this.value.trim().length > 10) {
-                const recommended = getRecommendedModel();
-                const currentModel = document.getElementById('modelSelect').value;
-                
-                if (recommended !== currentModel && availableModels[recommended]) {
-                    // Show subtle suggestion
-                    const suggestion = document.createElement('div');
-                    suggestion.style.cssText = `
-                        position: absolute;
-                        top: -30px;
-                        right: 0;
-                        background: rgba(102, 126, 234, 0.1);
-                        color: #667eea;
-                        padding: 5px 10px;
-                        border-radius: 8px;
-                        font-size: 0.8em;
-                        cursor: pointer;
-                        animation: fadeIn 0.3s ease;
-                    `;
-                    suggestion.textContent = `💡 Try ${availableModels[recommended].name}`;
-                    suggestion.onclick = () => {
-                        document.getElementById('modelSelect').value = recommended;
-                        suggestion.remove();
-                    };
-                    
-                    this.parentElement.style.position = 'relative';
-                    this.parentElement.appendChild(suggestion);
-                    
-                    setTimeout(() => {
-                        if (suggestion.parentElement) {
-                            suggestion.remove();
-                        }
-                    }, 5000);
-                }
-            }
-        });
-        
-        // Add CSS for fade in animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 </body>
 </html>
