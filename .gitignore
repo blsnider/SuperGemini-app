@@ -1,0 +1,18 @@
+# Ignore Python cache and compiled files
+__pycache__/
+*.py[cod]
+
+# Ignore virtual environments
+venv/
+
+# Ignore VS Code config unless explicitly allowed
+.vscode/
+
+# Ignore secret files
+.env
+.env.*
+
+# Ignore logs and misc
+*.log
+*.sqlite
+*.db
