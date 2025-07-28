@@ -1,18 +1,40 @@
-# Ignore Python cache and compiled files
+cat > .gitignore << 'EOF'
+# Python
 __pycache__/
 *.py[cod]
-
-# Ignore virtual environments
+*$py.class
+*.so
+.Python
 venv/
+env/
+ENV/
 
-# Ignore VS Code config unless explicitly allowed
-.vscode/
-
-# Ignore secret files
+# Environment variables
 .env
-.env.*
+.env.local
 
-# Ignore logs and misc
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
 *.log
-*.sqlite
-*.db
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local files
+*_local.*
+*_backup_*
+current-service.yaml
+test_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+EOF
