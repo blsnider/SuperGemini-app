@@ -3,6 +3,7 @@ import time
 import logging
 import pandas as pd
 import os
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from .config import Config, get_store_mappings, get_shop_mappings, get_available_models
 from .api_clients import APIClient 
@@ -189,14 +190,14 @@ class SuperGeminiRetailChatbot:
         return selected_tool, parameters
 
     def _extract_parameters_from_query(self, query: str, tool_name: str) -> Dict[str, Any]:
-        """Extract parameters from user query for the selected tool - Version 2 with individual params"""
+        """Extract parameters from user query - matching the actual tool parameters"""
         query_lower = query.lower()
         
         # Extract common parameters
         import re
         
-        # Extract limit/count
-        limit = 10000  # Large default limit for data retrieval
+        # Extract limit
+        limit = 100  # Default limit
         limit_patterns = [
             r'top\s+(\d+)', r'(\d+)\s+top', r'first\s+(\d+)', 
             r'limit\s+(\d+)', r'show\s+(\d+)'
@@ -231,17 +232,19 @@ class SuperGeminiRetailChatbot:
             year_filter = int(year_match.group(1))
         
         # Extract days back
-        days_back = 0  # 0 means no time filter
-        if 'last 30 days' in query_lower or '30 day' in query_lower:
-            days_back = 30
-        elif 'last week' in query_lower or '7 day' in query_lower:
+        days_back = 30  # Default
+        if 'last 7 days' in query_lower or 'last week' in query_lower or '7 day' in query_lower:
             days_back = 7
+        elif 'last 30 days' in query_lower or '30 day' in query_lower:
+            days_back = 30
         elif 'last 90 days' in query_lower or '90 day' in query_lower:
             days_back = 90
-        elif 'this month' in query_lower:
-            days_back = 30  # Approximate
+        elif 'last year' in query_lower or '365 day' in query_lower:
+            days_back = 365
+        elif year_filter > 0:  # If specific year mentioned
+            days_back = 0  # Don't apply days_back filter when year is specified
         
-        # Build parameters based on tool type - NEW APPROACH with individual params
+        # Build parameters based on tool
         if tool_name == 'get_top_selling_items':
             return {
                 'store_id': store_id,
@@ -252,54 +255,29 @@ class SuperGeminiRetailChatbot:
             }
         
         elif tool_name == 'get_inventory_status':
-            # For inventory, we still need conditions string for now
-            # TODO: Update this tool to use individual params
-            conditions = []
-            if store_id > 0:
-                conditions.append(f'inv.store_number = {store_id}')
-            if shop_id > 0:
-                conditions.append(f'skus.specialty_shop = {shop_id}')
-            
-            conditions_str = ' AND '.join(conditions) if conditions else '1=1'
-            
             return {
-                'conditions': conditions_str,
-                'limit': limit,
-                'min_on_hand': 0
+                'store_id': store_id,
+                'min_on_hand': 0,
+                'limit': limit
             }
         
         elif tool_name == 'get_out_of_stock_items':
-            # For out of stock, we still need conditions string for now
-            conditions = []
-            if store_id > 0:
-                conditions.append(f'oos.store_number = {store_id}')
-            
-            conditions_str = ' AND '.join(conditions) if conditions else '1=1'
-            
             return {
-                'conditions': conditions_str,
-                'limit': limit,
-                'min_sales_30d': 1
+                'store_id': store_id,
+                'min_sales_30d': 1,
+                'limit': limit
             }
         
         elif tool_name == 'get_overstock_items':
-            # For overstock items
-            conditions = []
-            if store_id > 0:
-                conditions.append(f'inv.store_number = {store_id}')
-            
-            conditions_str = ' AND '.join(conditions) if conditions else '1=1'
-            
             return {
-                'conditions': conditions_str,
-                'limit': limit,
-                'days_supply_threshold': 90
+                'store_id': store_id,
+                'days_supply_threshold': 90,
+                'limit': limit
             }
         
         elif tool_name == 'get_sales_trends':
-            # Sales trends already uses individual params
             return {
-                'days_back': days_back if days_back > 0 else 30,
+                'days_back': days_back,
                 'store_id': store_id,
                 'shop_id': shop_id
             }
@@ -308,52 +286,37 @@ class SuperGeminiRetailChatbot:
             return {
                 'limit': limit,
                 'min_revenue': 1000,
-                'days_back': days_back if days_back > 0 else 30
+                'days_back': days_back
             }
         
         elif tool_name == 'get_return_analysis':
-            # For returns
-            conditions = []
-            if store_id > 0:
-                conditions.append(f'st.dim_store_id = {store_id}')
-            
-            conditions_str = ' AND '.join(conditions) if conditions else '1=1'
-            
             return {
-                'conditions': conditions_str,
-                'limit': limit,
-                'days_back': days_back if days_back > 0 else 30
+                'store_id': store_id,
+                'days_back': days_back,
+                'limit': limit
             }
         
         elif tool_name == 'get_comparison_analysis':
-            # Determine comparison type
-            comparison_type = 'stores'  # default
-            entity1 = '64'
-            entity2 = '65'
+            # Extract store IDs for comparison
+            store1_id = 64  # default
+            store2_id = 65  # default
             
-            if 'period' in query_lower or 'time' in query_lower:
-                comparison_type = 'periods'
-                entity1 = 'Recent Period'
-                entity2 = 'Previous Period'
-            elif 'categor' in query_lower or 'shop' in query_lower:
-                comparison_type = 'categories'
-                entity1 = 'Shop 1'
-                entity2 = 'Shop 2'
+            if 'store 64' in query_lower:
+                store1_id = 64
+            if 'store 65' in query_lower:
+                store2_id = 65
             
             return {
-                'comparison_type': comparison_type,
-                'entity1': entity1,
-                'entity2': entity2,
-                'days_back': days_back if days_back > 0 else 30
+                'store1_id': store1_id,
+                'store2_id': store2_id,
+                'days_back': days_back
             }
         
-        # Fallback - return basic parameters
+        # Fallback for unknown tools
         return {
-            'limit': limit,
             'store_id': store_id,
             'shop_id': shop_id,
-            'year_filter': year_filter,
-            'days_back': days_back
+            'limit': limit
         }
 
     def chat(self, user_query, model_name=None, user_id=None, session_id=None):
@@ -507,7 +470,44 @@ class SuperGeminiRetailChatbot:
         try:
             logger.info(f"Processing result from tool {tool_name}: type={type(result)}")
             
-            if isinstance(result, pd.DataFrame):
+            # Handle string results (JSON format)
+            if isinstance(result, str):
+                try:
+                    # Parse JSON string
+                    data = json.loads(result)
+                    if isinstance(data, list):
+                        df = pd.DataFrame(data)
+                        logger.info(f"Created DataFrame from JSON string with shape: {df.shape}")
+                        
+                        # Convert numeric strings to proper types
+                        for col in df.columns:
+                            if col in ['total_units', 'total_cost', 'transaction_count', 'unique_skus', 'unique_customers', 'store_id', 'shop_id']:
+                                try:
+                                    df[col] = pd.to_numeric(df[col])
+                                except:
+                                    pass
+                            elif col in ['total_revenue', 'total_margin', 'margin_pct', 'avg_transaction_value', 'retail_value', 'current_on_hand']:
+                                try:
+                                    # Handle fraction strings like "98833/25"
+                                    df[col] = df[col].apply(lambda x: eval(x) if isinstance(x, str) and '/' in x else float(x))
+                                except:
+                                    pass
+                            elif col in ['sale_date', 'snapshot_date']:
+                                try:
+                                    df[col] = pd.to_datetime(df[col])
+                                except:
+                                    pass
+                        
+                        return df
+                    else:
+                        df = pd.DataFrame([data])
+                        logger.info(f"Created single-row DataFrame from JSON object")
+                        return df
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse JSON string result")
+                    return None
+            
+            elif isinstance(result, pd.DataFrame):
                 logger.info(f"Result is already a DataFrame with shape: {result.shape}")
                 return result
             

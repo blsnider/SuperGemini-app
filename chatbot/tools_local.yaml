@@ -1,0 +1,67 @@
+# Local testing configuration
+sources:
+  bq-warehouse:
+    kind: bigquery
+    project: sis-sandbox-463113
+    location: us
+    
+  bq-datamarts:
+    kind: bigquery
+    project: sis-sandbox-463113
+    location: us
+
+tools:
+  # Simple test tool
+  test_connection:
+    kind: bigquery-sql
+    source: bq-warehouse
+    description: Simple connection test
+    statement: |
+      SELECT 
+        CURRENT_TIMESTAMP() as current_time,
+        'Connection successful' as status
+      LIMIT 1
+
+  # Top selling items
+  get_top_selling_items:
+    kind: bigquery-sql
+    source: bq-warehouse
+    description: Get top selling items with filters
+    parameters:
+      - name: store_id
+        type: integer
+        default: 0
+      - name: shop_id
+        type: integer
+        default: 0
+      - name: year_filter
+        type: integer
+        default: 0
+      - name: days_back
+        type: integer
+        default: 30
+      - name: limit
+        type: integer
+        default: 10
+    statement: |
+      SELECT 
+        fs.sku_id,
+        MAX(skus.as400_data.sku_description) as product_name,
+        SUM(fs.quantity) as total_units,
+        SUM(fs.price_extended) as total_revenue
+      FROM `sis-sandbox-463113.warehouse.fct_sales` fs
+      LEFT JOIN `sis-sandbox-463113.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+      LEFT JOIN `sis-sandbox-463113.warehouse.dim_stores` st ON fs.store_id = st.dim_store_id
+      WHERE 1=1
+        AND (@store_id = 0 OR st.dim_store_id = @store_id)
+        AND (@shop_id = 0 OR skus.specialty_shop = @shop_id)
+        AND (@year_filter = 0 OR EXTRACT(YEAR FROM fs.transaction_datetime) = @year_filter)
+        AND (@days_back = 0 OR DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL @days_back DAY))
+      GROUP BY fs.sku_id
+      ORDER BY total_revenue DESC
+      LIMIT @limit
+
+toolsets:
+  retail_analytics:
+    - test_connection
+    - get_top_selling_items
