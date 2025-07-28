@@ -1,8 +1,8 @@
 import time
 import re
 import logging
-from chatbot.query_patterns import extract_intent, get_enhanced_schema_prompt, get_weighting_enhanced_prompt
-from chatbot.config import get_available_models
+from .query_patterns import extract_intent, get_enhanced_schema_prompt
+from .config import get_available_models
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +49,51 @@ INVALID_FIELD_PATHS = [
     'vendor1.vendor_name',  # Does not exist
 ]
 
-def generate_sql(user_query: str, model_name: str, api_client, config):
+def generate_sql_or_tool(user_query: str, model_name: str, api_clients, config):
+    """
+    Enhanced function that decides between MCP Toolbox tools and SQL generation
+    
+    Args:
+        user_query: Natural language query from user
+        model_name: AI model to use for SQL generation if needed
+        api_clients: API clients for model calls
+        config: Configuration object
+        
+    Returns:
+        Tuple of (sql_query_or_tool_info, generation_time_ms)
+    """
+    start_time = time.time()
+    
+    # Extract intent to determine if we should use toolbox or SQL
+    intent = extract_intent(user_query)
+    logger.info(f"Extracted intent: {intent}")
+    
+    # Check if this query should use MCP Toolbox
+    if intent.get('toolbox_priority') and intent.get('tool_mapping'):
+        # Return tool information instead of SQL
+        tool_info = {
+            'type': 'toolbox_tool',
+            'tool_name': intent['tool_mapping'],
+            'parameters': intent['tool_parameters'],
+            'intent': intent
+        }
+        
+        generation_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"Query mapped to MCP Toolbox tool: {intent['tool_mapping']}")
+        
+        return tool_info, generation_time_ms
+    
+    # Fallback to SQL generation for custom/complex queries
+    logger.info("Using SQL generation for query")
+    return generate_sql(user_query, model_name, api_clients, config)
+
+def generate_sql(user_query: str, model_name: str, api_clients, config):
     """Generate SQL query from user input using specified AI model with validation"""
     available_models = get_available_models()
     start_time = time.time()
     
     intent = extract_intent(user_query)
-    logger.info(f"Extracted intent: {intent}")
+    logger.info(f"Generating SQL for intent: {intent}")
     
     # Build the prompt with enhanced schema information
     prompt = get_enhanced_schema_prompt()
@@ -69,6 +107,18 @@ def generate_sql(user_query: str, model_name: str, api_client, config):
     if intent.get('return_focus', False):  # Add fallback to False
         prompt += "\n\n" + get_returns_enhanced_prompt()
         logger.info("Added returns analysis query guidance to prompt")
+    
+    # Add MCP Toolbox context
+    prompt += """
+    
+    *** MCP TOOLBOX INTEGRATION CONTEXT ***:
+    This system uses MCP Toolbox for common retail analytics queries. However, this query 
+    requires custom SQL generation. Ensure your SQL is:
+    1. Compatible with existing result formats
+    2. Follows the exact schema paths provided
+    3. Handles edge cases appropriately
+    4. Optimized for performance
+    """
     
     # Add strict validation reminder
     prompt += """
@@ -97,6 +147,7 @@ def generate_sql(user_query: str, model_name: str, api_client, config):
     - Inventory focus: {intent['inventory_focus']}
     - Return focus: {intent['return_focus']}
     - Time series: {intent['time_series']}
+    - Toolbox mapping: {intent.get('tool_mapping', 'None')} (handled by SQL instead)
     
     Generate the SQL query based on this understanding, following the exact schema paths provided.
     """
@@ -107,8 +158,7 @@ def generate_sql(user_query: str, model_name: str, api_client, config):
         
         logger.info(f"Generating SQL using {model_name} ({provider})")
         
-        # Use the unified APIClient.call_model method
-        sql_text = api_client.call_model(provider, model_name, prompt)
+        sql_text = api_clients.call_model(provider, model_name, prompt)
         
         # Clean up the SQL response
         sql_query = sql_text.strip()
@@ -139,6 +189,58 @@ def generate_sql(user_query: str, model_name: str, api_client, config):
         error_query = "SELECT 'SQL generation failed' as error_message, 'Please try rephrasing your question' as suggestion"
         return error_query, generation_time_ms
 
+def is_toolbox_compatible_query(intent: dict, user_query: str) -> bool:
+    """
+    Determine if a query should be handled by MCP Toolbox instead of SQL generation
+    
+    Args:
+        intent: Extracted intent dictionary
+        user_query: Original user query
+        
+    Returns:
+        Boolean indicating if toolbox should be used
+    """
+    # Conditions that favor toolbox usage
+    toolbox_conditions = [
+        # Has a clear tool mapping
+        intent.get('tool_mapping') is not None,
+        
+        # Standard retail analytics patterns
+        intent.get('inventory_focus') and len(intent.get('metrics', [])) <= 3,
+        intent.get('return_focus') and not intent.get('comparison'),
+        intent.get('ranking') and intent.get('limit', 0) <= 50,
+        
+        # Simple dimensional analysis
+        len(intent.get('dimensions', [])) <= 2,
+        
+        # Performance-friendly queries
+        intent.get('limit', 0) <= 100,
+    ]
+    
+    # Conditions that require SQL generation
+    sql_required_conditions = [
+        # Complex custom logic
+        'custom calculation' in user_query.lower(),
+        'specific formula' in user_query.lower(),
+        
+        # Complex joins or subqueries indicated by keywords
+        'nested' in user_query.lower(),
+        'subquery' in user_query.lower(),
+        'complex' in user_query.lower() and 'join' in user_query.lower(),
+        
+        # Very specific business logic
+        len(user_query.split()) > 25,  # Very detailed queries
+        
+        # Multiple time periods or complex comparisons
+        intent.get('comparison') and len(intent.get('dimensions', [])) > 2,
+    ]
+    
+    # Decision logic
+    if any(sql_required_conditions):
+        return False
+    
+    return any(toolbox_conditions)
+
 def get_returns_enhanced_prompt():
     """Enhanced prompt for returns analysis queries"""
     return """
@@ -164,6 +266,10 @@ def get_returns_enhanced_prompt():
     - Consider return_type field for categorization
     - Link customer information when analyzing return patterns
     - Exclude returns data from sales analysis unless specifically combining
+    
+    MCP TOOLBOX NOTE:
+    - Many return queries can be handled by pre-built tools like get_return_analysis
+    - Only generate SQL for custom return analysis that doesn't fit standard patterns
     """
 
 def validate_generated_sql(sql_query: str, intent: dict) -> dict:
@@ -214,6 +320,10 @@ def validate_generated_sql(sql_query: str, intent: dict) -> dict:
     # Basic SQL syntax checks
     if not basic_sql_syntax_check(sql_query):
         errors.append("Basic SQL syntax validation failed")
+    
+    # Check for MCP Toolbox compatibility hints
+    if intent.get('tool_mapping'):
+        warnings.append(f"This query could potentially be handled by MCP Toolbox tool: {intent['tool_mapping']}")
     
     return {
         'valid': len(errors) == 0,
@@ -364,3 +474,40 @@ def validate_against_bigquery_schema(sql_query: str, bq_client) -> dict:
             'valid': False,
             'error': str(e)
         }
+
+def get_weighting_enhanced_prompt():
+    """Enhanced prompt that ensures weighting-compatible queries with correct field paths"""
+    return """
+    When generating queries for inventory analysis or weighting calculations, 
+    ensure the following fields are included with CORRECT field paths:
+
+    REQUIRED FIELDS FOR WEIGHTING (with correct schema paths):
+    - oh_units (from inventory) as current_on_hand
+    - units_on_order (from PO data if available, else 0) 
+    - SUM(fs.quantity) over last 30 days as units_sold_30d (calculated in sales_metrics CTE)
+    - SUM(fs.quantity) over last 7 days as units_sold_7d (calculated in sales_metrics CTE)
+    - SUM(fs.quantity) from 14-7 days ago as units_sold_prev_7d (calculated in sales_metrics CTE)
+    - SUM(fs.price_extended) as revenue_30d (calculated in sales_metrics CTE)
+    - SUM(fs.cogs_extended) as cost_30d (calculated in sales_metrics CTE)
+    - Calculated margin percentage (DERIVED in final SELECT only)
+    - Calculated sell-through percentage (DERIVED in final SELECT only)
+    - Daily/weekly velocity calculations
+    - YoY growth calculations
+    - Days with sales counts
+    - MOQ extraction from inv.product_details.sku_description2 (NOT sku_description2 alone)
+
+    CRITICAL FIELD PATH REMINDERS:
+    - ✅ Use: inv.product_details.sku_description
+    - ✅ Use: inv.product_details.sku_description2
+    - ✅ Use: inv.product_details.style
+    - ❌ Never use: inv.product_details.vendor_name (does not exist)
+    - ✅ For vendor: JOIN with dim_skus and use skus.as400_data.vendor_name1
+    - ✅ Calculate margin_pct in final SELECT: SAFE_DIVIDE(sm.revenue_30d - sm.cost_30d, sm.revenue_30d) * 100
+    - ❌ Never calculate derived percentages inside intermediate CTEs
+
+    Always follow the inventory analysis template provided in the main schema prompt.
+    
+    MCP TOOLBOX NOTE:
+    - Consider if this query could be handled by tools like get_inventory_status or get_overstock_items
+    - Only generate complex SQL if standard toolbox tools cannot handle the requirements
+    """
