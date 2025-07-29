@@ -1100,7 +1100,8 @@ if __name__ == '__main__':
     logger.info(f"Firebase: {'Initialized' if firebase_app else 'Not initialized'}")
     logger.info(f"MCP Toolbox URL: {config.toolbox_url}")
     logger.info("🚫 SQL Generation: DISABLED (MCP-Only Mode)")
-    
+     
+if __name__ == '__main__':    
     if chatbot:
         logger.info(f"MCP Toolbox: {'Enabled' if getattr(chatbot, 'toolbox_enabled', False) else 'Disabled'}")
         if hasattr(chatbot, 'toolbox_enabled') and chatbot.toolbox_enabled:
@@ -1110,3 +1111,4 @@ if __name__ == '__main__':
                 logger.info(f"MCP tools count: {len(chatbot.tools) if chatbot.tools else 0}")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
+
