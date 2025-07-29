@@ -37,7 +37,7 @@ tools:
       - name: days_back
         type: integer
         description: Number of days to look back (0 for no time filter)
-        default: 30
+        default: 42
       - name: limit
         type: integer
         description: Number of items to return
@@ -184,7 +184,7 @@ tools:
       - name: days_back
         type: integer
         description: Number of days to look back
-        default: 30
+        default: 42
       - name: store_id
         type: integer
         description: Store ID filter (0 for all)
@@ -228,7 +228,7 @@ tools:
       - name: days_back
         type: integer
         description: Number of days to analyze
-        default: 30
+        default: 42
     statement: |
       WITH margin_analysis AS (
         SELECT 
@@ -336,7 +336,7 @@ tools:
       - name: days_back
         type: integer
         description: Number of days to analyze
-        default: 30
+        default: 42
       - name: limit
         type: integer
         description: Number of items to return
@@ -388,15 +388,15 @@ tools:
       - name: store1_id
         type: integer
         description: First store ID
-        default: 64
+        default: 0
       - name: store2_id
         type: integer
         description: Second store ID
-        default: 65
+        default: 0
       - name: days_back
         type: integer
         description: Number of days to analyze
-        default: 30
+        default: 42
     statement: |
       WITH store_performance AS (
         SELECT 

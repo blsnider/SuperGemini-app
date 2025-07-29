@@ -42,3 +42,5 @@ firebase_admin==7.0.0
 # For async handling (if needed in your backend)
 aiohttp==3.12.14
 anyio==4.9.0
+google-auth>=2.0.0
+google-auth-httplib2>=0.1.0

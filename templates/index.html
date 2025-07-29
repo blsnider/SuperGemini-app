@@ -222,23 +222,20 @@
         
         /* FIXED DROPDOWN STYLES */
         select {
-            padding: 10px 14px;
+            padding: 12px 14px;
             border: 2px solid #e0e7ff;
             border-radius: 10px;
             font-size: 14px;
             background: white;
             cursor: pointer;
             transition: all 0.3s ease;
-            min-width: 200px;
-            /* Fix dropdown appearance */
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            background-size: 16px;
-            padding-right: 40px;
+            min-width: 250px;
+            color: #374151;
+            font-weight: 500;
+            /* Remove custom styling that can interfere */
+            appearance: menulist;
+            -webkit-appearance: menulist;
+            -moz-appearance: menulist;
         }
         
         select:focus {
@@ -247,22 +244,33 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        /* Fix optgroup styling */
+        /* Ensure optgroup and options are visible */
         select optgroup {
             font-weight: bold;
             color: #374151;
-            background: #f9fafb;
-            padding: 8px 0;
+            background: #f8fafc;
+            padding: 4px 8px;
+            font-size: 13px;
         }
         
         select option {
             padding: 8px 12px;
             background: white;
             color: #374151;
+            font-size: 14px;
+            font-weight: normal;
         }
         
-        select option:hover {
-            background: #f3f4f6;
+        /* Ensure dropdown opens properly */
+        select:focus optgroup,
+        select:focus option {
+            background: white;
+            color: #374151;
+        }
+        
+        select option:checked {
+            background: #667eea;
+            color: white;
         }
         
         .advanced-options {
@@ -669,7 +677,7 @@
                         <div class="model-selector">
                             <label for="modelSelect">AI Model:</label>
                             <select id="modelSelect">
-                                <!-- Models will be loaded dynamically -->
+                                <option value="">Loading models...</option>
                             </select>
                         </div>
                         
@@ -972,27 +980,38 @@
                 if (data.success) {
                     availableModels = data.models;
                     populateModelSelect(data.models);
+                    console.log('Models loaded successfully:', Object.keys(data.models));
                 } else {
                     console.error('Failed to load models:', data.error);
+                    // Show error in dropdown
+                    const select = document.getElementById('modelSelect');
+                    select.innerHTML = '<option value="">Error loading models</option>';
                 }
             } catch (error) {
                 console.error('Error loading models:', error);
+                const select = document.getElementById('modelSelect');
+                select.innerHTML = '<option value="">Connection error</option>';
             }
         }
         
         function populateModelSelect(models) {
             const select = document.getElementById('modelSelect');
-            select.innerHTML = '';
+            select.innerHTML = ''; // Clear loading message
+            
+            console.log('Populating dropdown with models:', models);
             
             const providers = {};
             
             // Group models by provider
             Object.entries(models).forEach(([modelId, config]) => {
-                if (!providers[config.provider]) {
-                    providers[config.provider] = [];
+                const provider = config.provider || 'unknown';
+                if (!providers[provider]) {
+                    providers[provider] = [];
                 }
-                providers[config.provider].push({ id: modelId, config });
+                providers[provider].push({ id: modelId, config });
             });
+            
+            console.log('Grouped by providers:', providers);
             
             // Create optgroups
             Object.entries(providers).forEach(([provider, modelList]) => {
@@ -1002,29 +1021,37 @@
                 modelList.forEach(({ id, config }) => {
                     const option = document.createElement('option');
                     option.value = id;
-                    option.textContent = config.name;
+                    option.textContent = config.name || config.description || id;
                     option.setAttribute('data-provider', provider);
-                    option.title = config.description;
+                    option.title = config.description || '';
                     optgroup.appendChild(option);
+                    console.log('Added option:', option.textContent, 'with value:', option.value);
                 });
                 
                 select.appendChild(optgroup);
             });
             
-            // Set default selection
+            // Set default selection to first available model
             if (select.options.length > 0) {
-                select.value = Object.keys(models)[0];
+                const firstModel = Object.keys(models)[0];
+                select.value = firstModel;
+                console.log('Set default model to:', firstModel);
             }
+            
+            // Force a repaint to ensure dropdown is visible
+            select.style.display = 'none';
+            select.offsetHeight; // Trigger reflow
+            select.style.display = '';
         }
         
         function getProviderDisplayName(provider) {
             const names = {
-                'google': 'Google Gemini',
+                'google': '🔵 Google Gemini',
                 'xai': '🚀 X.AI (Grok)',
-                'anthropic': 'Anthropic Claude',
-                'openai': 'OpenAI GPT'
+                'anthropic': '🟠 Anthropic Claude',
+                'openai': '🟢 OpenAI GPT'
             };
-            return names[provider] || provider;
+            return names[provider] || `🔘 ${provider}`;
         }
         
         function setupAutoSuggestions() {
@@ -1253,6 +1280,14 @@
             const enableCodeExecution = document.getElementById('enableCodeExecution').checked;
             const enableWeighting = document.getElementById('enableWeighting').checked;
             
+            console.log('Submitting query with model:', selectedModel);
+            
+            // Validate model selection
+            if (!selectedModel) {
+                addMessage('error', 'Please select an AI model from the dropdown.');
+                return;
+            }
+            
             // Disable buttons during processing
             submitBtn.disabled = true;
             advancedBtn.disabled = true;
@@ -1277,13 +1312,32 @@
                     requestBody.enable_code_execution = enableCodeExecution;
                 }
                 
+                console.log('Sending request:', requestBody);
+                
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
                     body: JSON.stringify(requestBody)
                 });
                 
-                const data = await response.json();
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                let data;
+                try {
+                    data = await response.json();
+                    console.log('Response data:', data);
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    throw new Error('Invalid JSON response from server');
+                }
                 
                 document.getElementById('loading').style.display = 'none';
                 submitBtn.disabled = false;
@@ -1306,10 +1360,59 @@
                     addMessage('error', errorContent);
                 }
             } catch (error) {
+                console.error('Query execution failed:', error);
+                
                 document.getElementById('loading').style.display = 'none';
                 submitBtn.disabled = false;
                 advancedBtn.disabled = false;
-                addMessage('error', 'Connection error: ' + error.message);
+                
+                // Enhanced error message with debugging info
+                let errorMessage = 'Connection error: ' + error.message;
+                
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage += '<br/><br/><strong>Debugging Steps:</strong><ul>';
+                    errorMessage += '<li>Check if the server is running</li>';
+                    errorMessage += '<li>Verify MCP Toolbox server is accessible</li>';
+                    errorMessage += '<li>Check browser console for more details</li>';
+                    errorMessage += '<li>Try refreshing the page</li>';
+                    errorMessage += '</ul>';
+                    errorMessage += '<button onclick="runDiagnostics()" style="margin-top: 10px;">🔧 Run Diagnostics</button>';
+                }
+                
+                addMessage('error', errorMessage);
+            }
+        }
+        
+        // Add diagnostic function
+        async function runDiagnostics() {
+            console.log('Running diagnostics...');
+            
+            try {
+                const response = await fetch('/debug/mcp_status');
+                const data = await response.json();
+                
+                console.log('Diagnostic results:', data);
+                
+                let diagnosticMessage = '<strong>🔧 System Diagnostics:</strong><br/>';
+                if (data.success) {
+                    const info = data.diagnostic_info;
+                    diagnosticMessage += `<strong>Chatbot:</strong> ${info.chatbot_status.initialized ? '✅' : '❌'}<br/>`;
+                    diagnosticMessage += `<strong>MCP Toolbox:</strong> ${info.chatbot_status.toolbox_enabled ? '✅' : '❌'}<br/>`;
+                    diagnosticMessage += `<strong>Tools Available:</strong> ${info.chatbot_status.tools_count}<br/>`;
+                    diagnosticMessage += `<strong>Connection Test:</strong> ${info.connection_test}<br/>`;
+                    
+                    if (info.chatbot_status.available_tools.length > 0) {
+                        diagnosticMessage += `<strong>Available Tools:</strong> ${info.chatbot_status.available_tools.join(', ')}<br/>`;
+                    }
+                } else {
+                    diagnosticMessage += `❌ Diagnostic failed: ${data.error}`;
+                }
+                
+                addMessage('assistant', diagnosticMessage);
+                
+            } catch (error) {
+                console.error('Diagnostics failed:', error);
+                addMessage('error', 'Diagnostics failed: ' + error.message);
             }
         }
         

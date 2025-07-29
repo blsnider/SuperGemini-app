@@ -381,27 +381,48 @@ def get_models() -> Dict[str, Any]:
         logger.error(f"Error getting models: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# Add this enhanced error handling to your app.py chat endpoint
+
 @app.route('/chat', methods=['POST'])
 @limiter.limit("50 per minute") if limiter else lambda f: f
 @optional_auth
 def chat() -> Dict[str, Any]:
-    """Handle chat requests using ONLY MCP tools."""
+    """Handle chat requests using ONLY MCP tools with enhanced debugging."""
+    
+    # Enhanced logging for debugging
+    logger.info("=== CHAT ENDPOINT CALLED ===")
+    
     if not chatbot:
-        return jsonify({'success': False, 'error': 'MCP chatbot not initialized'}), 500
+        logger.error("Chatbot not initialized")
+        return jsonify({
+            'success': False, 
+            'error': 'MCP chatbot not initialized',
+            'debug_info': 'Chatbot instance is None'
+        }), 500
 
     if not chatbot.toolbox_enabled:
+        logger.error("MCP Toolbox not enabled")
         return jsonify({
             'success': False, 
             'error': 'MCP Toolbox is not enabled. Please check server configuration.',
             'system_mode': 'MCP-Only',
-            'suggestion': 'Ensure MCP Toolbox server is running and tools.yaml is configured'
+            'suggestion': 'Ensure MCP Toolbox server is running and tools.yaml is configured',
+            'debug_info': f'Toolbox available: {hasattr(chatbot, "toolbox")}, Tools: {len(chatbot.tools) if hasattr(chatbot, "tools") else 0}'
         }), 500
 
     try:
+        # Enhanced request validation
         if not request.is_json:
-            return jsonify({'success': False, 'error': 'Content-Type must be application/json'}), 400
+            logger.error("Request is not JSON")
+            return jsonify({
+                'success': False, 
+                'error': 'Content-Type must be application/json',
+                'debug_info': f'Content-Type: {request.content_type}'
+            }), 400
 
         data = request.json or {}
+        logger.info(f"Request data: {data}")
+        
         query = data.get('query', '').strip()
         model = data.get('model', config.model_name).lower()
         
@@ -409,39 +430,98 @@ def chat() -> Dict[str, Any]:
         session_id = request.headers.get('X-Cloud-Trace-Context', 'default').split('/')[0]
 
         if not query:
-            return jsonify({'success': False, 'error': 'No query provided'}), 400
+            logger.error("No query provided")
+            return jsonify({
+                'success': False, 
+                'error': 'No query provided',
+                'debug_info': 'Query is empty or None'
+            }), 400
+
+        logger.info(f"Processing query: '{query}' with model: '{model}'")
 
         # Validate model (for summary generation)
         if not chatbot.available_models or model not in chatbot.available_models:
-            return jsonify({'success': False, 'error': f'Invalid model: {model}'}), 400
+            logger.error(f"Invalid model: {model}")
+            logger.info(f"Available models: {list(chatbot.available_models.keys()) if chatbot.available_models else 'None'}")
+            return jsonify({
+                'success': False, 
+                'error': f'Invalid model: {model}',
+                'available_models': list(chatbot.available_models.keys()) if chatbot.available_models else [],
+                'debug_info': f'Model validation failed'
+            }), 400
 
-        # Call MCP-only chatbot
+        # Test MCP Toolbox connection before proceeding
         try:
-            result = chatbot.chat(query, model, user_id, session_id)
-        except Exception as e:
-            logger.error(f"MCP chatbot error: {e}")
+            toolbox_status = chatbot.get_toolbox_status()
+            logger.info(f"Toolbox status: {toolbox_status}")
+            
+            if not toolbox_status.get('toolbox_enabled', False):
+                logger.error("Toolbox not properly enabled")
+                return jsonify({
+                    'success': False,
+                    'error': 'MCP Toolbox is not properly enabled',
+                    'debug_info': toolbox_status,
+                    'suggestion': 'Check MCP Toolbox server status and configuration'
+                }), 500
+                
+        except Exception as toolbox_error:
+            logger.error(f"Toolbox status check failed: {toolbox_error}")
             return jsonify({
                 'success': False,
-                'error': f'MCP chatbot error: {str(e)}',
-                'system_mode': 'MCP-Only'
+                'error': f'Toolbox status check failed: {str(toolbox_error)}',
+                'debug_info': 'Could not verify toolbox status',
+                'suggestion': 'Ensure MCP Toolbox server is running and accessible'
+            }), 500
+
+        # Call MCP-only chatbot with enhanced error handling
+        try:
+            logger.info("Calling chatbot.chat() method...")
+            result = chatbot.chat(query, model, user_id, session_id)
+            logger.info(f"Chatbot response: {result.get('success', False)}, Tool: {result.get('tool_name', 'N/A')}")
+            
+        except Exception as chat_error:
+            logger.error(f"MCP chatbot error: {chat_error}")
+            logger.error(f"Chatbot error traceback: {traceback.format_exc()}")
+            return jsonify({
+                'success': False,
+                'error': f'MCP chatbot error: {str(chat_error)}',
+                'system_mode': 'MCP-Only',
+                'debug_info': f'Chat method failed: {type(chat_error).__name__}',
+                'suggestion': 'Check MCP Toolbox server logs and connectivity'
             }), 500
         
-        # Add to history
-        results_count = result.get('row_count', 0) if result.get('success') else 0
-        add_to_history(query, results_count)
+        # Add to history if successful
+        if result.get('success'):
+            results_count = result.get('row_count', 0)
+            add_to_history(query, results_count)
         
         # Add system information to response
         result['system_mode'] = 'MCP-Only'
         result['sql_generation_disabled'] = True
+        result['debug_info'] = {
+            'endpoint': '/chat',
+            'model_used': model,
+            'toolbox_enabled': chatbot.toolbox_enabled,
+            'available_tools': len(chatbot.tools) if hasattr(chatbot, 'tools') else 0
+        }
         
+        logger.info(f"Returning response: success={result.get('success')}")
         return jsonify(result)
 
     except Exception as e:
-        logger.error(f"Chat request failed: {e}")
+        logger.error(f"Chat request failed with unexpected error: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return jsonify({
             'success': False,
-            'error': f'Internal error: {str(e)}',
-            'system_mode': 'MCP-Only'
+            'error': f'Internal server error: {str(e)}',
+            'system_mode': 'MCP-Only',
+            'debug_info': {
+                'error_type': type(e).__name__,
+                'endpoint': '/chat',
+                'has_chatbot': chatbot is not None,
+                'has_toolbox': hasattr(chatbot, 'toolbox') if chatbot else False
+            },
+            'suggestion': 'Check server logs for detailed error information'
         }), 500
 
 @app.route('/generate_chart', methods=['POST'])
@@ -677,6 +757,169 @@ def toolbox_status():
                 'toolbox_enabled': False,
                 'available_tools': []
             }
+        }), 500
+
+# Add this diagnostic endpoint to your app.py
+
+@app.route('/debug/mcp_status', methods=['GET'])
+def debug_mcp_status():
+    """Comprehensive MCP Toolbox diagnostic endpoint."""
+    try:
+        diagnostic_info = {
+            'timestamp': time.time(),
+            'environment': os.getenv('ENVIRONMENT', 'unknown'),
+            'toolbox_url': os.getenv('TOOLBOX_URL', 'Not set'),
+            'chatbot_status': {
+                'initialized': chatbot is not None,
+                'toolbox_enabled': getattr(chatbot, 'toolbox_enabled', False) if chatbot else False,
+                'toolbox_instance': hasattr(chatbot, 'toolbox') if chatbot else False,
+                'tools_count': len(chatbot.tools) if chatbot and hasattr(chatbot, 'tools') else 0,
+                'available_tools': list(chatbot.tools.keys()) if chatbot and hasattr(chatbot, 'tools') and isinstance(chatbot.tools, dict) else []
+            }
+        }
+        
+        # Test toolbox connection if available
+        if chatbot and hasattr(chatbot, 'toolbox') and chatbot.toolbox:
+            try:
+                # Try to get toolbox status
+                toolbox_status = chatbot.get_toolbox_status()
+                diagnostic_info['toolbox_status'] = toolbox_status
+                diagnostic_info['connection_test'] = 'SUCCESS'
+            except Exception as e:
+                diagnostic_info['toolbox_status'] = None
+                diagnostic_info['connection_test'] = f'FAILED: {str(e)}'
+        else:
+            diagnostic_info['connection_test'] = 'NO_TOOLBOX_INSTANCE'
+        
+        # Test a simple tool mapping
+        if chatbot:
+            try:
+                tool_name, parameters = chatbot._map_query_to_tool("top sellers shop 3 store 64")
+                diagnostic_info['query_mapping_test'] = {
+                    'tool_name': tool_name,
+                    'parameters': parameters,
+                    'tool_available': tool_name in chatbot.tools if hasattr(chatbot, 'tools') else False
+                }
+            except Exception as e:
+                diagnostic_info['query_mapping_test'] = f'FAILED: {str(e)}'
+        
+        # Test API clients for summary generation
+        try:
+            models_available = get_available_models()
+            diagnostic_info['models_status'] = {
+                'count': len(models_available),
+                'models': list(models_available.keys()),
+                'api_clients_initialized': hasattr(chatbot, 'api_clients') if chatbot else False
+            }
+        except Exception as e:
+            diagnostic_info['models_status'] = f'FAILED: {str(e)}'
+        
+        # Test BigQuery connection
+        try:
+            if chatbot and hasattr(chatbot, 'bigquery_utils'):
+                bq_test = chatbot.bigquery_utils.test_connection()
+                diagnostic_info['bigquery_status'] = 'CONNECTED' if bq_test else 'FAILED'
+            else:
+                diagnostic_info['bigquery_status'] = 'NO_BQ_UTILS'
+        except Exception as e:
+            diagnostic_info['bigquery_status'] = f'ERROR: {str(e)}'
+        
+        return jsonify({
+            'success': True,
+            'diagnostic_info': diagnostic_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Diagnostic endpoint failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'diagnostic_info': {
+                'critical_error': True,
+                'error_type': type(e).__name__
+            }
+        }), 500
+
+@app.route('/debug/test_query', methods=['POST'])
+def debug_test_query():
+    """Test a specific query step by step."""
+    try:
+        data = request.json or {}
+        query = data.get('query', 'top sellers shop 3 store 64')
+        model = data.get('model', 'gemini-2.5-pro')
+        
+        test_results = {
+            'query': query,
+            'model': model,
+            'steps': {}
+        }
+        
+        # Step 1: Check chatbot
+        if not chatbot:
+            test_results['steps']['chatbot_check'] = 'FAILED: Chatbot not initialized'
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        test_results['steps']['chatbot_check'] = 'PASSED'
+        
+        # Step 2: Check toolbox
+        if not chatbot.toolbox_enabled:
+            test_results['steps']['toolbox_check'] = 'FAILED: Toolbox not enabled'
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        test_results['steps']['toolbox_check'] = 'PASSED'
+        
+        # Step 3: Test query mapping
+        try:
+            tool_name, parameters = chatbot._map_query_to_tool(query)
+            test_results['steps']['query_mapping'] = {
+                'status': 'PASSED',
+                'tool_name': tool_name,
+                'parameters': parameters
+            }
+        except Exception as e:
+            test_results['steps']['query_mapping'] = f'FAILED: {str(e)}'
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        # Step 4: Check if tool exists
+        if tool_name not in chatbot.tools:
+            test_results['steps']['tool_availability'] = f'FAILED: Tool {tool_name} not in available tools'
+            test_results['available_tools'] = list(chatbot.tools.keys())
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        test_results['steps']['tool_availability'] = 'PASSED'
+        
+        # Step 5: Test tool execution (dry run)
+        try:
+            tool = chatbot.tools[tool_name]
+            test_results['steps']['tool_access'] = {
+                'status': 'PASSED',
+                'tool_type': str(type(tool)),
+                'tool_callable': callable(tool)
+            }
+        except Exception as e:
+            test_results['steps']['tool_access'] = f'FAILED: {str(e)}'
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        # Step 6: Test model validation
+        if model not in chatbot.available_models:
+            test_results['steps']['model_validation'] = f'FAILED: Model {model} not available'
+            test_results['available_models'] = list(chatbot.available_models.keys())
+            return jsonify({'success': False, 'test_results': test_results})
+        
+        test_results['steps']['model_validation'] = 'PASSED'
+        
+        return jsonify({
+            'success': True,
+            'test_results': test_results,
+            'message': 'All pre-execution checks passed. Ready for actual query execution.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Test query endpoint failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'test_results': test_results if 'test_results' in locals() else {}
         }), 500
 
 @app.route('/history', methods=['GET'])

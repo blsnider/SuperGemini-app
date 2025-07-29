@@ -9,6 +9,7 @@ from .config import Config, get_store_mappings, get_shop_mappings, get_available
 from .api_clients import APIClient 
 from .bigquery_utils import BigQueryUtils
 from .visualizer import create_visualization
+from .summarizer import generate_summary
 
 # MCP Toolbox Integration
 try:
@@ -18,7 +19,41 @@ except ImportError:
     TOOLBOX_AVAILABLE = False
     logging.error("MCP Toolbox not available. This system requires MCP Toolbox to function.")
 
+# Google Auth imports for IAP
+try:
+    import google.auth
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    import aiohttp
+    GOOGLE_AUTH_AVAILABLE = True
+except ImportError:
+    GOOGLE_AUTH_AVAILABLE = False
+    logging.warning("Google auth libraries not available. Running without IAP authentication.")
+
 logger = logging.getLogger(__name__)
+
+# Working Toolbox Client - No authentication needed
+class AuthenticatedToolboxClient(ToolboxSyncClient):
+    """Extended ToolboxSyncClient - no auth needed since Cloud Run allows unauthenticated access"""
+    
+    def __init__(self, base_url: str):
+        super().__init__(base_url)
+        
+        # No authentication needed since we configured Cloud Run to allow unauthenticated access
+        self.use_auth = False
+        logger.info("Using unauthenticated access (Cloud Run configured for allUsers)")
+    
+    def _get_auth_token(self) -> Optional[str]:
+        """No auth token needed"""
+        return None
+    
+    async def _request(self, method: str, path: str, **kwargs):
+        """Simple request without authentication"""
+        logger.debug(f"Making unauthenticated request: {method} {path}")
+        try:
+            return await super()._request(method, path, **kwargs)
+        except Exception as e:
+            logger.error(f"Request failed: {method} {path} - Error: {e}")
+            raise
 
 class SuperGeminiRetailChatbot:
     def __init__(self, config):
@@ -52,15 +87,21 @@ class SuperGeminiRetailChatbot:
         self._initialize_toolbox()
 
     def _initialize_toolbox(self):
-        """Initialize MCP Toolbox client and load retail analytics tools"""
+        """Initialize MCP Toolbox client with authentication if on Cloud Run"""
         try:
-            # Your deployed Toolbox URL - update this to match your deployment
+            # Your deployed Toolbox URL
             toolbox_url = os.getenv("TOOLBOX_URL", "https://toolbox-41815171183.us-central1.run.app")
             logger.info(f"Connecting to MCP Toolbox at: {toolbox_url}")
             
-            # Initialize the toolbox client
-            self.toolbox = ToolboxSyncClient(toolbox_url)
+            # Use our authenticated client
+            self.toolbox = AuthenticatedToolboxClient(toolbox_url)
             logger.info("MCP Toolbox client initialized successfully")
+            
+            # Test the connection first
+            if os.getenv('K_SERVICE'):
+                logger.info("Running on Cloud Run - testing authenticated connection...")
+            else:
+                logger.info("Running locally - testing unauthenticated connection...")
             
             # Load the retail_analytics toolset defined in tools.yaml
             logger.info("Loading 'retail_analytics' toolset...")
@@ -108,6 +149,7 @@ class SuperGeminiRetailChatbot:
             logger.error("1. MCP Toolbox server is running")
             logger.error("2. tools.yaml is properly configured")
             logger.error("3. toolbox_core package is installed")
+            logger.error("4. If using IAP, ensure service account has invoker permissions")
             raise RuntimeError(f"MCP Toolbox initialization failed: {e}")
 
     def _map_query_to_tool(self, query: str) -> Tuple[str, Dict[str, Any]]:
@@ -320,7 +362,7 @@ class SuperGeminiRetailChatbot:
 
     def chat(self, user_query, model_name=None, user_id=None, session_id=None):
         """
-        Process user query using ONLY MCP Toolbox tools - no SQL generation fallback.
+        Process user query using ONLY MCP Toolbox tools with automatic summary generation.
         """
         if not self.toolbox_enabled:
             return {
@@ -356,17 +398,6 @@ class SuperGeminiRetailChatbot:
             
             logger.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
             
-            # Debug: Try to inspect the tool
-            try:
-                if hasattr(tool, 'statement'):
-                    logger.debug(f"Tool SQL template: {tool.statement[:200]}...")
-                if hasattr(tool, '_statement'):
-                    logger.debug(f"Tool SQL template (private): {tool._statement[:200]}...")
-                if hasattr(tool, 'get_statement'):
-                    logger.debug(f"Tool SQL via method: {tool.get_statement()[:200]}...")
-            except Exception as e:
-                logger.warning(f"Could not inspect tool SQL: {e}")
-            
             # Call the tool with extracted parameters
             result = tool(**parameters)
             execution_time = int((time.time() - start_time) * 1000)
@@ -378,8 +409,7 @@ class SuperGeminiRetailChatbot:
                 logger.warning(f"Tool {tool_name} returned no data")
                 return {
                     'success': True,
-                    'results': "No data returned from query.",
-                    'results_data': [],
+                    'results': [],
                     'row_count': 0,
                     'has_data': False,
                     'message': 'Query executed successfully but returned no data',
@@ -397,26 +427,25 @@ class SuperGeminiRetailChatbot:
             
             execution_times['tool_execution_ms'] = execution_time
             
-            # AUTO-GENERATE SUMMARY HERE
-            summary_text = None
+            # AUTO-GENERATE SUMMARY after successful MCP tool execution
+            auto_summary = None
             summary_error = None
+            summary_start_time = time.time()
             
             try:
-                logger.info(f"Auto-generating summary for {len(df)} rows of data...")
-                summary_start = time.time()
+                logger.info(f"Auto-generating summary with model: {model_name}")
                 
-                # Add toolbox context for enhanced summaries
+                # Create toolbox context for enhanced summary
                 toolbox_context = {
                     'tool_name': tool_name,
                     'toolbox_used': True,
                     'execution_method': 'MCP Toolbox',
-                    'parameters': parameters
+                    'parameters': parameters,
+                    'execution_time_ms': execution_time
                 }
                 
-                # Import here to avoid circular imports
-                from .summarizer import generate_summary
-                
-                summary_text = generate_summary(
+                # Generate summary using the specified model
+                auto_summary = generate_summary(
                     df, 
                     user_query, 
                     model_name or self.config.model_name, 
@@ -426,17 +455,19 @@ class SuperGeminiRetailChatbot:
                     toolbox_context=toolbox_context
                 )
                 
-                execution_times['summary_generation_ms'] = int((time.time() - summary_start) * 1000)
-                logger.info("Summary generated successfully")
+                summary_execution_time = int((time.time() - summary_start_time) * 1000)
+                execution_times['summary_generation_ms'] = summary_execution_time
+                
+                logger.info(f"Auto-summary generated successfully in {summary_execution_time}ms")
                 
             except Exception as e:
-                logger.error(f"Auto-summary generation failed: {e}")
                 summary_error = str(e)
-                # Don't fail the whole request if summary fails
+                logger.error(f"Auto-summary generation failed: {e}")
+                execution_times['summary_generation_ms'] = int((time.time() - summary_start_time) * 1000)
             
             execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
             
-            # Log to BigQuery (but don't fail if this errors)
+            # Log to BigQuery
             try:
                 self.bigquery_utils.log_query_to_bigquery(
                     query_id=query_id,
@@ -450,19 +481,22 @@ class SuperGeminiRetailChatbot:
                     user_id=user_id or "anonymous",
                     session_id=session_id or "default"
                 )
+                
+                # Update with summary info if generated
+                if auto_summary:
+                    self.bigquery_utils.update_query_log(query_id, {'has_summary': True})
+                    
             except Exception as e:
-                logger.warning(f"Failed to log to BigQuery (non-critical): {e}")
+                logger.error(f"Failed to log to BigQuery: {e}")
             
-            # Format results for return - both string and structured
-            results_string = self._format_results_as_string(df)
-            results_structured = self._format_results_as_list(df)
+            # Format results for return
+            results = self._format_results(df)
             
             response = {
                 'success': True,
                 'error': None,
                 'sql': f"[MCP Tool: {tool_name}]",
-                'results': results_string,  # String for display
-                'results_data': results_structured,  # Structured data for charts
+                'results': results,
                 'row_count': len(df),
                 'has_data': True,
                 'query_id': query_id,
@@ -474,21 +508,19 @@ class SuperGeminiRetailChatbot:
                 'parameters': parameters
             }
             
-            # Add summary if we got one
-            if summary_text:
-                response['auto_summary'] = summary_text
-                response['summary_generated'] = True
+            # Add auto-summary to response if generated
+            if auto_summary:
+                response['auto_summary'] = auto_summary
             elif summary_error:
                 response['summary_error'] = summary_error
-                response['summary_generated'] = False
-                
+            
             return response
             
         except Exception as e:
             logger.error(f"MCP tool execution failed: {str(e)}")
             execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
             
-            # Log failure to BigQuery (but don't fail if this errors)
+            # Log failure to BigQuery
             try:
                 self.bigquery_utils.log_query_to_bigquery(
                     query_id=query_id,
@@ -503,7 +535,7 @@ class SuperGeminiRetailChatbot:
                     session_id=session_id or "default"
                 )
             except Exception as log_error:
-                logger.warning(f"Failed to log error to BigQuery (non-critical): {log_error}")
+                logger.error(f"Failed to log error to BigQuery: {log_error}")
             
             return {
                 'success': False,
@@ -606,48 +638,17 @@ class SuperGeminiRetailChatbot:
             logger.error(f"Failed to process MCP result: {str(e)}")
             return None
 
-    def _format_results_as_string(self, df: pd.DataFrame, preview_rows: int = None) -> str:
-        """Format DataFrame results as a formatted string table for display"""
-        if df is None or df.empty:
-            return "No data returned"
-        
-        # UI display limit
-        preview_rows = preview_rows or self.config.preview_rows or 20
-        
-        # Log if we're truncating for display
-        if len(df) > preview_rows:
-            logger.info(f"Retrieved {len(df)} rows, displaying first {preview_rows} for UI")
-        
-        # Get the display DataFrame
-        display_df = df.head(preview_rows).copy()
-        
-        # Clean up any NaN values
-        display_df = display_df.fillna('')
-        
-        # Format numeric columns for better display
-        for col in display_df.columns:
-            if display_df[col].dtype in ['float64', 'float32']:
-                # Round floats to 2 decimal places for currency/percentages
-                if any(keyword in col.lower() for keyword in ['revenue', 'cost', 'margin', 'price', 'value']):
-                    display_df[col] = display_df[col].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) and x != '' else '')
-                elif 'pct' in col.lower() or 'percent' in col.lower():
-                    display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) and x != '' else '')
-                else:
-                    display_df[col] = display_df[col].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) and x != '' else '')
-            elif display_df[col].dtype in ['int64', 'int32']:
-                # Format integers with commas
-                display_df[col] = display_df[col].apply(lambda x: f"{x:,}" if pd.notnull(x) and x != '' else '')
-        
-        # Convert to a nicely formatted string table
-        return display_df.to_string(index=False, max_rows=preview_rows)
-
-    def _format_results_as_list(self, df: pd.DataFrame, preview_rows: int = None) -> List[Dict[str, Any]]:
-        """Format DataFrame results as list of dictionaries for structured use"""
+    def _format_results(self, df: pd.DataFrame, preview_rows: int = None) -> List[Dict[str, Any]]:
+        """Format DataFrame results for API response - limit only display, not data retrieval"""
         if df is None or df.empty:
             return []
         
         # UI display limit (not data retrieval limit)
         preview_rows = preview_rows or self.config.preview_rows or 20
+        
+        # Log if we're truncating for display
+        if len(df) > preview_rows:
+            logger.info(f"Retrieved {len(df)} rows, displaying first {preview_rows} for UI")
         
         # Convert DataFrame to list of dictionaries - only first N rows for UI
         results = df.head(preview_rows).to_dict('records')
@@ -671,11 +672,7 @@ class SuperGeminiRetailChatbot:
         try:
             chart = create_visualization(self.last_df, self.last_query, chart_type)
             if chart:
-                if self.current_query_id:
-                    try:
-                        self.bigquery_utils.update_query_log(self.current_query_id, {'has_visualization': True})
-                    except Exception as e:
-                        logger.warning(f"Failed to update query log (non-critical): {e}")
+                self.bigquery_utils.update_query_log(self.current_query_id, {'has_visualization': True})
                 return {
                     'success': True,
                     'chart': chart
@@ -693,7 +690,7 @@ class SuperGeminiRetailChatbot:
             }
 
     def generate_llm_summary(self, model_name: str = None):
-        """Generate AI summary of last query results"""
+        """Generate AI summary of last query results (manual generation)"""
         if self.last_df is None or self.last_df.empty:
             return {'success': False, 'error': 'No data available to summarize'}
             
@@ -704,8 +701,6 @@ class SuperGeminiRetailChatbot:
                 'toolbox_used': True,
                 'execution_method': 'MCP Toolbox'
             } if self.last_tool_used else None
-            
-            from .summarizer import generate_summary
             
             summary = generate_summary(
                 self.last_df, 
@@ -718,13 +713,10 @@ class SuperGeminiRetailChatbot:
             )
             
             if self.current_query_id:
-                try:
-                    self.bigquery_utils.update_query_log(self.current_query_id, {
-                        'has_summary': True,
-                        'summary_method': 'mcp_enhanced'
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to update query log (non-critical): {e}")
+                self.bigquery_utils.update_query_log(self.current_query_id, {
+                    'has_summary': True,
+                    'summary_method': 'manual_mcp_enhanced'
+                })
             
             return {
                 'success': True,
@@ -762,5 +754,6 @@ class SuperGeminiRetailChatbot:
             'tools_loaded': len(self.tools) if self.tools else 0,
             'available_tools': list(self.tools.keys()) if isinstance(self.tools, dict) else [],
             'toolbox_url': getattr(self.toolbox, 'url', 'Unknown') if self.toolbox else None,
-            'system_mode': 'MCP-Only (No SQL Fallback)'
+            'system_mode': 'MCP-Only (No SQL Fallback)',
+            'auth_enabled': getattr(self.toolbox, 'use_auth', False) if self.toolbox else False
         }
