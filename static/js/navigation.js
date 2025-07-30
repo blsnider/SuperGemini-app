@@ -128,3 +128,80 @@ function debugNavigation() {
     const sidebarButtons = document.querySelectorAll('button');
     console.log('All buttons:', sidebarButtons.length);
 }
+
+// Model Configuration Functions
+let allModels = {};
+
+function showModelConfig() {
+    // Load all available models first
+    fetch('/api/chat/models')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.models) {
+                allModels = data.models;
+                populateModelConfig();
+                document.getElementById('modelConfigDialog').style.display = 'flex';
+            }
+        })
+        .catch(error => console.error('Error loading models:', error));
+}
+
+function populateModelConfig() {
+    const modelConfigList = document.getElementById('modelConfigList');
+    const enabledModels = getEnabledModels();
+    
+    modelConfigList.innerHTML = '';
+    
+    Object.entries(allModels).forEach(([modelId, modelInfo]) => {
+        const isEnabled = enabledModels.length === 0 || enabledModels.includes(modelId);
+        
+        const modelItem = document.createElement('div');
+        modelItem.style.cssText = 'padding: 10px; border-bottom: 1px solid #e0e7ff; display: flex; align-items: center;';
+        
+        modelItem.innerHTML = `
+            <label style="display: flex; align-items: center; width: 100%; cursor: pointer;">
+                <input type="checkbox" id="model_${modelId}" value="${modelId}" 
+                       ${isEnabled ? 'checked' : ''} 
+                       style="margin-right: 10px;">
+                <div style="flex: 1;">
+                    <strong>${modelId}</strong>
+                    <div style="font-size: 0.85em; color: #666; margin-top: 2px;">
+                        ${modelInfo.description || 'No description available'}
+                    </div>
+                </div>
+            </label>
+        `;
+        
+        modelConfigList.appendChild(modelItem);
+    });
+}
+
+function saveModelConfig() {
+    const checkboxes = document.querySelectorAll('#modelConfigList input[type="checkbox"]');
+    const enabledModels = [];
+    
+    checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+            enabledModels.push(checkbox.value);
+        }
+    });
+    
+    // Save to localStorage
+    localStorage.setItem('enabledModels', JSON.stringify(enabledModels));
+    
+    // Update the model dropdown if on chat page
+    if (window.updateModelDropdown) {
+        window.updateModelDropdown();
+    }
+    
+    closeModelConfig();
+}
+
+function closeModelConfig() {
+    document.getElementById('modelConfigDialog').style.display = 'none';
+}
+
+function getEnabledModels() {
+    const stored = localStorage.getItem('enabledModels');
+    return stored ? JSON.parse(stored) : [];
+}

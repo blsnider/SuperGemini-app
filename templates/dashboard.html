@@ -199,6 +199,247 @@
         .status-indicator.healthy { border-left: 4px solid #10b981; }
         .status-indicator.unhealthy { border-left: 4px solid #ef4444; }
         
+        /* Table styling for dashboard charts - matching chat page */
+        .chart-placeholder table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 13px;
+        }
+        
+        .chart-placeholder th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+        
+        .chart-placeholder td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e0e7ff;
+            font-size: 13px;
+        }
+        
+        .chart-placeholder tr:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .chart-placeholder tr:nth-child(even) {
+            background: rgba(248, 250, 252, 0.5);
+        }
+        
+        /* Column-specific formatting */
+        .chart-placeholder .currency {
+            text-align: right;
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        .chart-placeholder .percentage {
+            text-align: right;
+            color: #dc2626;
+            font-weight: 600;
+        }
+        
+        .chart-placeholder .units {
+            text-align: right;
+            color: #374151;
+        }
+        
+        /* Default numeric alignment */
+        .chart-placeholder td:not(:first-child) {
+            text-align: right;
+        }
+        
+        /* First column (usually names/descriptions) */
+        .chart-placeholder td:first-child,
+        .chart-placeholder th:first-child {
+            text-align: left;
+            font-weight: 500;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        /* MCP Toolset Icons */
+        .mcp-toolsets-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 15px;
+        }
+        
+        .mcp-tool-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        
+        .mcp-tool-icon:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .mcp-tool-icon.loading {
+            opacity: 0.7;
+            cursor: wait;
+        }
+        
+        .mcp-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            filter: grayscale(100%);
+            transition: filter 0.5s ease;
+        }
+        
+        .mcp-tool-icon.loaded .mcp-icon {
+            filter: grayscale(0%);
+        }
+        
+        .mcp-tool-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #4b5563;
+            text-align: center;
+            line-height: 1.2;
+        }
+        
+        .mcp-status-dot {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #9ca3af;
+            transition: background 0.3s ease;
+        }
+        
+        .mcp-tool-icon.loaded .mcp-status-dot {
+            background: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 90%;
+            max-height: 85vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6b7280;
+            padding: 5px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .modal-close:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 0;
+        }
+        
+        .modal-filters {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 8px;
+            align-items: center;
+            font-size: 14px;
+        }
+        
+        .modal-filters label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
         /* Responsive design */
         @media (max-width: 768px) {
             body {
@@ -255,7 +496,14 @@
                         <input type="number" id="shopNumber" placeholder="All" 
                                style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 100px;">
                     </div>
-                    <button onclick="applyFilters()" style="padding: 10px 20px; background: #34d399; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 18px;">
+                    <div style="display: flex; flex-direction: column;">
+                        <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Compare Store #</label>
+                        <input type="number" id="compareStoreNumber" placeholder="None" 
+                               style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 100px;">
+                    </div>
+                    <button id="applyButton" onclick="applyFilters()" style="padding: 10px 20px; background: #34d399; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 18px; min-width: 100px; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);" 
+                            onmouseover="this.style.background='#10b981'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(52, 211, 153, 0.4)';" 
+                            onmouseout="if(!this.disabled){this.style.background='#34d399'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(52, 211, 153, 0.3)';}">
                         Apply
                     </button>
                 </div>
@@ -276,73 +524,54 @@
                 </div>
                 
                 <div class="metric-card">
-                    <div class="metric-value" id="totalOrders">
+                    <div class="metric-value" id="totalMargin">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Total Orders</div>
+                    <div class="metric-label">Margin %</div>
                 </div>
                 
                 <div class="metric-card">
-                    <div class="metric-value" id="avgOrderValue">
+                    <div class="metric-value" id="totalUnits">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Avg Order Value</div>
+                    <div class="metric-label">Total Units</div>
                 </div>
                 
                 <div class="metric-card">
-                    <div class="metric-value" id="returnRate">
+                    <div class="metric-value" id="totalProfit">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Return Rate</div>
+                    <div class="metric-label">Total Profit</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="totalCOGS">
+                        <span class="loading-spinner"></span>
+                    </div>
+                    <div class="metric-label">Total COGS</div>
                 </div>
             </div>
             
-            <!-- Sales Trend Chart -->
-            <div class="chart-section">
-                <div class="chart-title">
-                    <span>📈 Sales Trends (Last 30 Days)</span>
-                    <button class="refresh-button" onclick="refreshChart('salesTrend')" id="salesTrendRefresh">
-                        🔄 Refresh
-                    </button>
-                </div>
-                <div class="chart-placeholder" id="salesTrendChart">
-                    <div>
-                        <span class="loading-spinner"></span>
-                        <span style="margin-left: 10px;">Loading sales data...</span>
-                    </div>
-                </div>
+            <!-- MCP Toolsets Grid -->
+            <div class="mcp-toolsets-grid" id="mcpToolsetsGrid">
+                <!-- Icons will be populated by JavaScript -->
             </div>
-            
-            <!-- Top Products Chart -->
-            <div class="chart-section">
-                <div class="chart-title">
-                    <span>🏆 Top Products by Sales Volume</span>
-                    <button class="refresh-button" onclick="refreshChart('topProducts')" id="topProductsRefresh">
-                        🔄 Refresh
-                    </button>
-                </div>
-                <div class="chart-placeholder" id="topProductsChart">
-                    <div>
-                        <span class="loading-spinner"></span>
-                        <span style="margin-left: 10px;">Loading product data...</span>
-                    </div>
-                </div>
+        </div>
+    </div>
+
+    <!-- Modal for displaying tool data -->
+    <div class="modal-overlay" id="toolModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">
+                    <span id="modalIcon"></span>
+                    <span id="modalTitleText"></span>
+                </h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
-            
-            <!-- Regional Performance Chart -->
-            <div class="chart-section">
-                <div class="chart-title">
-                    <span>🗺️ Regional Performance</span>
-                    <button class="refresh-button" onclick="refreshChart('regionalPerf')" id="regionalPerfRefresh">
-                        🔄 Refresh
-                    </button>
-                </div>
-                <div class="chart-placeholder" id="regionalPerfChart">
-                    <div>
-                        <span class="loading-spinner"></span>
-                        <span style="margin-left: 10px;">Loading regional data...</span>
-                    </div>
-                </div>
+            <div class="modal-filters" id="modalFilters"></div>
+            <div class="modal-body" id="modalBody">
+                <!-- Table data will be loaded here -->
             </div>
         </div>
     </div>
@@ -350,17 +579,32 @@
     <script>
         // Dashboard data and functionality
         let dashboardData = {};
-        let refreshIntervals = {};
+        let toolsetData = {};
         let currentStoreId = 0;
         let currentShopId = 0;
+        let currentCompareStoreId = 0;
+        
+        // MCP Toolset definitions
+        const mcpToolsets = [
+            { id: 'get_top_selling_items', icon: '🏆', label: 'Top Selling', description: 'Best performing items by revenue' },
+            { id: 'get_units_vs_dollars_comparison', icon: '💹', label: 'Units vs $', description: 'Compare unit vs revenue performance' },
+            { id: 'get_shop_performance', icon: '🏪', label: 'Shop Analysis', description: 'Performance metrics by shop' },
+            { id: 'get_sell_through_rates', icon: '📊', label: 'Sell Through', description: 'Inventory sell-through rates' },
+            { id: 'get_time_period_comparison', icon: '📅', label: 'Time Periods', description: 'Compare across time periods' },
+            { id: 'get_inventory_status', icon: '📦', label: 'Inventory', description: 'Current inventory levels' },
+            { id: 'get_inventory_risk_assessment', icon: '⚠️', label: 'Risk Analysis', description: 'Inventory risk priorities' },
+            { id: 'get_out_of_stock_items', icon: '🚨', label: 'Out of Stock', description: 'Items with zero inventory' },
+            { id: 'get_sales_trends', icon: '📈', label: 'Sales Trends', description: 'Sales performance over time' },
+            { id: 'get_top_margin_items', icon: '💰', label: 'Top Margins', description: 'Highest profit margin items' },
+            { id: 'get_overstock_items', icon: '📦', label: 'Overstock', description: 'Excess inventory items' },
+            { id: 'get_comparison_analysis', icon: '🔄', label: 'Comparisons', description: 'Store/period comparisons' }
+        ];
         
         // Initialize dashboard on page load
         document.addEventListener('DOMContentLoaded', function() {
             checkSystemStatus();
-            loadDashboardData();
-            
-            // Refresh data every 5 minutes
-            setInterval(loadDashboardData, 5 * 60 * 1000);
+            initializeMCPToolsets();
+            loadKeyMetrics();
             
             // Check system status every 30 seconds
             setInterval(checkSystemStatus, 30000);
@@ -372,19 +616,55 @@
             document.getElementById('shopNumber').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') applyFilters();
             });
+            document.getElementById('compareStoreNumber').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') applyFilters();
+            });
+            
+            // Close modal on overlay click
+            document.getElementById('toolModal').addEventListener('click', function(e) {
+                if (e.target === this) closeModal();
+            });
         });
         
         function applyFilters() {
             const storeInput = document.getElementById('storeNumber');
             const shopInput = document.getElementById('shopNumber');
+            const compareStoreInput = document.getElementById('compareStoreNumber');
+            const applyButton = document.getElementById('applyButton');
+            
+            // Show loading state
+            applyButton.disabled = true;
+            applyButton.innerHTML = '<span class="loading-spinner" style="display: inline-block; margin-right: 8px;"></span>Loading...';
+            applyButton.style.background = '#6b7280';
             
             currentStoreId = parseInt(storeInput.value) || 0;
             currentShopId = parseInt(shopInput.value) || 0;
+            currentCompareStoreId = parseInt(compareStoreInput.value) || 0;
             
-            console.log(`Applying filters - Store: ${currentStoreId}, Shop: ${currentShopId}`);
+            console.log(`Applying filters - Store: ${currentStoreId}, Shop: ${currentShopId}, Compare Store: ${currentCompareStoreId}`);
             
-            // Reload all data with new filters
-            loadDashboardData();
+            // Clear cached data
+            toolsetData = {};
+            
+            // Reset all icons to loading state
+            mcpToolsets.forEach(tool => {
+                const iconDiv = document.getElementById(`tool-${tool.id}`);
+                if (iconDiv) {
+                    iconDiv.classList.add('loading');
+                    iconDiv.classList.remove('loaded');
+                }
+            });
+            
+            // Reload metrics and lazy load tool data
+            Promise.all([
+                loadKeyMetrics(),
+                ...mcpToolsets.map(tool => lazyLoadToolData(tool))
+            ]).finally(() => {
+                // Reset button state
+                applyButton.disabled = false;
+                applyButton.innerHTML = 'Apply';
+                applyButton.style.background = '#34d399';
+            });
         }
         
         async function checkSystemStatus() {
@@ -410,24 +690,25 @@
             }
         }
         
-        async function loadDashboardData() {
-            try {
-                console.log('Loading dashboard data...');
+        function initializeMCPToolsets() {
+            const grid = document.getElementById('mcpToolsetsGrid');
+            grid.innerHTML = '';
+            
+            mcpToolsets.forEach(tool => {
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'mcp-tool-icon loading';
+                iconDiv.id = `tool-${tool.id}`;
+                iconDiv.onclick = () => openToolModal(tool);
+                iconDiv.title = tool.description;
                 
-                // Load key metrics
-                await loadKeyMetrics();
+                iconDiv.innerHTML = `
+                    <div class="mcp-status-dot"></div>
+                    <div class="mcp-icon">${tool.icon}</div>
+                    <div class="mcp-tool-label">${tool.label}</div>
+                `;
                 
-                // Load charts
-                await loadChart('salesTrend');
-                await loadChart('topProducts');
-                await loadChart('regionalPerf');
-                
-                console.log('Dashboard data loaded successfully');
-                
-            } catch (error) {
-                console.error('Error loading dashboard data:', error);
-                showError('Failed to load dashboard data: ' + error.message);
-            }
+                grid.appendChild(iconDiv);
+            });
         }
         
         async function loadKeyMetrics() {
@@ -442,9 +723,10 @@
                 
                 if (data.success && data.metrics) {
                     updateMetric('totalRevenue', formatCurrency(data.metrics.total_revenue));
-                    updateMetric('totalOrders', data.metrics.total_orders.toLocaleString());
-                    updateMetric('avgOrderValue', formatCurrency(data.metrics.avg_order_value));
-                    updateMetric('returnRate', data.metrics.return_rate.toFixed(1) + '%');
+                    updateMetric('totalMargin', (data.metrics.margin_pct || 0).toFixed(1) + '%');
+                    updateMetric('totalUnits', (data.metrics.total_units || 0).toLocaleString());
+                    updateMetric('totalProfit', formatCurrency(data.metrics.total_profit));
+                    updateMetric('totalCOGS', formatCurrency(data.metrics.total_cogs));
                     console.log('Metrics updated successfully');
                 } else {
                     throw new Error(data.error || 'Failed to load metrics');
@@ -453,58 +735,333 @@
                 console.error('Error loading metrics:', error);
                 // Show placeholder data or error state
                 updateMetric('totalRevenue', '$--');
-                updateMetric('totalOrders', '--');
-                updateMetric('avgOrderValue', '$--');
-                updateMetric('returnRate', '--%');
+                updateMetric('totalMargin', '--%');
+                updateMetric('totalUnits', '--');
+                updateMetric('totalProfit', '$--');
+                updateMetric('totalCOGS', '$--');
             }
         }
         
-        async function loadChart(chartType) {
-            const chartElement = document.getElementById(chartType + 'Chart');
+        async function lazyLoadToolData(tool) {
+            const iconDiv = document.getElementById(`tool-${tool.id}`);
             
             try {
-                console.log(`Loading ${chartType} chart...`);
-                const params = new URLSearchParams();
-                if (currentStoreId) params.append('store_id', currentStoreId);
-                if (currentShopId) params.append('shop_id', currentShopId);
+                console.log(`Lazy loading data for ${tool.id}...`);
                 
-                const response = await fetch(`/api/dashboard/chart/${chartType}?` + params.toString());
+                // Build query parameters
+                const query = {
+                    store_id: currentStoreId || 0,
+                    shop_id: currentShopId || 0,
+                    limit: 50  // Default limit for icon preview
+                };
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+                // Build query with embedded parameters
+                let queryText = `Execute MCP tool: ${tool.id}`;
+                if (currentStoreId) queryText += ` for store ${currentStoreId}`;
+                if (currentShopId) queryText += ` shop ${currentShopId}`;
+                queryText += ' limit 50';
+                
+                const response = await fetch('/api/chat/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: queryText,
+                        model: 'gemini-2.5-flash'  // Use fast model for data loading
+                    })
+                });
                 
                 const data = await response.json();
                 
-                if (data.success && data.chart_html) {
-                    chartElement.innerHTML = data.chart_html;
+                if (data.success && data.results) {
+                    // Store the data
+                    toolsetData[tool.id] = {
+                        data: data.results,
+                        raw_data: data.results_data || data.results,
+                        timestamp: new Date(),
+                        row_count: data.row_count,
+                        query: query
+                    };
                     
-                    // Execute any scripts in the chart HTML
-                    const scripts = chartElement.getElementsByTagName('script');
-                    for (let script of scripts) {
-                        try {
-                            eval(script.innerHTML);
-                        } catch (scriptError) {
-                            console.error(`Script execution error in ${chartType}:`, scriptError);
-                        }
-                    }
-                    console.log(`${chartType} chart loaded successfully`);
+                    // Mark as loaded
+                    iconDiv.classList.remove('loading');
+                    iconDiv.classList.add('loaded');
+                    
+                    console.log(`${tool.id} loaded successfully with ${data.row_count} rows`);
                 } else {
-                    throw new Error(data.error || 'Chart generation failed');
+                    throw new Error(data.error || 'Failed to load tool data');
                 }
             } catch (error) {
-                console.error(`Error loading ${chartType} chart:`, error);
-                chartElement.innerHTML = `
+                console.error(`Error loading ${tool.id}:`, error);
+                iconDiv.classList.remove('loading');
+                iconDiv.style.opacity = '0.5';
+                iconDiv.title = `Failed to load: ${error.message}`;
+            }
+        }
+        
+        async function openToolModal(tool) {
+            const modal = document.getElementById('toolModal');
+            const modalTitle = document.getElementById('modalTitleText');
+            const modalIcon = document.getElementById('modalIcon');
+            const modalBody = document.getElementById('modalBody');
+            const modalFilters = document.getElementById('modalFilters');
+            
+            // Set modal header
+            modalTitle.textContent = tool.label;
+            modalIcon.textContent = tool.icon;
+            
+            // Show current filters
+            modalFilters.innerHTML = `
+                <label>Filters:</label>
+                ${currentStoreId ? `<span>Store #${currentStoreId}</span>` : '<span>All Stores</span>'}
+                ${currentShopId ? `<span>Shop #${currentShopId}</span>` : '<span>All Shops</span>'}
+                ${currentCompareStoreId ? `<span>vs Store #${currentCompareStoreId}</span>` : ''}
+            `;
+            
+            // Show loading state
+            modalBody.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <span class="loading-spinner"></span>
+                    <div style="margin-top: 20px;">Loading ${tool.label} data...</div>
+                </div>
+            `;
+            
+            // Show modal
+            modal.classList.add('show');
+            
+            try {
+                // Check if we have cached data
+                const cached = toolsetData[tool.id];
+                if (cached && (new Date() - cached.timestamp) < 60000) {  // 1 minute cache
+                    displayToolData(tool, cached.data);
+                    return;
+                }
+                
+                // Load fresh data with full parameters
+                const query = buildToolQuery(tool.id);
+                
+                // Build query with tool-specific parameters
+                let queryText = buildToolQueryText(tool.id);
+                
+                const response = await fetch('/api/chat/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: queryText,
+                        model: 'gemini-2.5-flash'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.results) {
+                    displayToolData(tool, data.results);
+                    
+                    // Update cache
+                    toolsetData[tool.id] = {
+                        data: data.results,
+                        raw_data: data.results_data || data.results,
+                        timestamp: new Date(),
+                        row_count: data.row_count,
+                        query: query
+                    };
+                } else {
+                    throw new Error(data.error || 'Failed to load data');
+                }
+            } catch (error) {
+                modalBody.innerHTML = `
                     <div style="color: #ef4444; text-align: center; padding: 40px;">
                         <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
-                        <div>Failed to load chart</div>
-                        <div style="margin-top: 8px; font-size: 12px;">${error.message}</div>
-                        <button class="refresh-button" onclick="refreshChart('${chartType}')" style="margin-top: 16px;">
-                            🔄 Try Again
+                        <div>Failed to load data</div>
+                        <div style="margin-top: 8px; font-size: 14px; color: #6b7280;">${error.message}</div>
+                        <button onclick="openToolModal(${JSON.stringify(tool).replace(/"/g, '&quot;')})" 
+                                style="margin-top: 20px; padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                            Try Again
                         </button>
                     </div>
                 `;
             }
+        }
+        
+        function buildToolQuery(toolId) {
+            const baseQuery = {
+                store_id: currentStoreId || 0,
+                shop_id: currentShopId || 0
+            };
+            
+            // Add tool-specific parameters
+            switch(toolId) {
+                case 'get_top_selling_items':
+                    return { ...baseQuery, limit: 100, metric_type: 'revenue', days_back: 42 };
+                case 'get_inventory_status':
+                    return { ...baseQuery, limit: 100, risk_level: 'all' };
+                case 'get_sales_trends':
+                    return { ...baseQuery, days_back: 42, granularity: 'daily' };
+                case 'get_top_margin_items':
+                    return { ...baseQuery, limit: 100, min_revenue: 500, days_back: 42 };
+                case 'get_overstock_items':
+                    return { ...baseQuery, limit: 100, days_supply_threshold: 90 };
+                case 'get_out_of_stock_items':
+                    return { ...baseQuery, limit: 100, min_sales_30d: 1 };
+                case 'get_comparison_analysis':
+                    return { 
+                        ...baseQuery, 
+                        comparison_type: 'store', 
+                        entity1_id: currentStoreId || 64, 
+                        entity2_id: currentCompareStoreId || 65, 
+                        limit: 25 
+                    };
+                case 'get_inventory_risk_assessment':
+                    return { ...baseQuery, limit: 100, min_priority_score: 50 };
+                case 'get_shop_performance':
+                    return { ...baseQuery, days_back: 42, metric_focus: 'revenue' };
+                case 'get_sell_through_rates':
+                    return { ...baseQuery, days_period: 30, min_beginning_inventory: 10 };
+                case 'get_time_period_comparison':
+                    return { ...baseQuery, comparison_type: 'mom', aggregation_level: 'daily' };
+                case 'get_units_vs_dollars_comparison':
+                    return { ...baseQuery, days_back: 42, limit: 20 };
+                default:
+                    return { ...baseQuery, limit: 100 };
+            }
+        }
+        
+        function buildToolQueryText(toolId) {
+            // Build natural language query for tool execution
+            let query = `Execute MCP tool: ${toolId}`;
+            
+            // Add store/shop filters
+            if (currentStoreId) query += ` for store ${currentStoreId}`;
+            if (currentShopId) query += ` shop ${currentShopId}`;
+            
+            // Add tool-specific parameters in natural language
+            switch(toolId) {
+                case 'get_top_selling_items':
+                    query += ' top 100 by revenue last 42 days';
+                    break;
+                case 'get_sales_trends':
+                    query += ' daily trends last 42 days';
+                    break;
+                case 'get_top_margin_items':
+                    query += ' top 100 margin items minimum revenue 500 last 42 days';
+                    break;
+                case 'get_overstock_items':
+                    query += ' overstock items 90+ days supply limit 100';
+                    break;
+                case 'get_out_of_stock_items':
+                    query += ' out of stock with sales last 30 days limit 100';
+                    break;
+                case 'get_comparison_analysis':
+                    const store1 = currentStoreId || 64;
+                    const store2 = currentCompareStoreId || 65;
+                    query += ` compare store ${store1} vs store ${store2} limit 25`;
+                    break;
+                case 'get_inventory_risk_assessment':
+                    query += ' inventory risk priority score 50+ limit 100';
+                    break;
+                case 'get_shop_performance':
+                    query += ' shop performance by revenue last 42 days';
+                    break;
+                case 'get_sell_through_rates':
+                    query += ' sell through rates 30 day period minimum 10 beginning inventory';
+                    break;
+                case 'get_time_period_comparison':
+                    query += ' month over month comparison daily level';
+                    break;
+                case 'get_units_vs_dollars_comparison':
+                    query += ' units vs dollars comparison last 42 days top 20';
+                    break;
+                default:
+                    query += ' limit 100';
+            }
+            
+            return query;
+        }
+        
+        function displayToolData(tool, data) {
+            const modalBody = document.getElementById('modalBody');
+            
+            if (!data || data.length === 0) {
+                modalBody.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #6b7280;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                        <div>No data available</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Create table
+            const table = document.createElement('table');
+            table.className = 'data-table';
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+            
+            // Get columns
+            const columns = Object.keys(data[0]);
+            
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            columns.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = formatColumnName(col);
+                th.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                th.style.color = 'white';
+                th.style.padding = '12px';
+                th.style.textAlign = 'left';
+                th.style.position = 'sticky';
+                th.style.top = '0';
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Create body
+            const tbody = document.createElement('tbody');
+            data.forEach((row, idx) => {
+                const tr = document.createElement('tr');
+                if (idx % 2 === 0) tr.style.background = '#f9fafb';
+                
+                columns.forEach(col => {
+                    const td = document.createElement('td');
+                    td.style.padding = '10px';
+                    td.style.borderBottom = '1px solid #e5e7eb';
+                    
+                    const value = row[col];
+                    if (typeof value === 'number') {
+                        td.style.textAlign = 'right';
+                        if (col.includes('revenue') || col.includes('cost') || col.includes('margin') || col.includes('value')) {
+                            td.textContent = formatCurrency(value);
+                        } else if (col.includes('pct') || col.includes('percent')) {
+                            td.textContent = value.toFixed(1) + '%';
+                        } else {
+                            td.textContent = value.toLocaleString();
+                        }
+                    } else {
+                        td.textContent = value || '';
+                    }
+                    
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            
+            modalBody.innerHTML = '';
+            modalBody.appendChild(table);
+        }
+        
+        function formatColumnName(name) {
+            return name
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, l => l.toUpperCase())
+                .replace(/Pct/g, '%')
+                .replace(/Id/g, 'ID');
+        }
+        
+        function closeModal() {
+            document.getElementById('toolModal').classList.remove('show');
         }
         
         function updateMetric(metricId, value) {
@@ -526,33 +1083,6 @@
             }).format(amount);
         }
         
-        async function refreshChart(chartType) {
-            const chartElement = document.getElementById(chartType + 'Chart');
-            const refreshButton = document.getElementById(chartType + 'Refresh');
-            
-            // Disable button and show loading
-            if (refreshButton) {
-                refreshButton.disabled = true;
-                refreshButton.innerHTML = '<span class="loading-spinner"></span> Refreshing...';
-            }
-            
-            chartElement.innerHTML = `
-                <div style="text-align: center; padding: 40px;">
-                    <span class="loading-spinner"></span>
-                    <span style="margin-left: 10px;">Refreshing chart...</span>
-                </div>
-            `;
-            
-            try {
-                await loadChart(chartType);
-            } finally {
-                // Re-enable button
-                if (refreshButton) {
-                    refreshButton.disabled = false;
-                    refreshButton.innerHTML = '🔄 Refresh';
-                }
-            }
-        }
         
         function showError(message) {
             console.error('Dashboard Error:', message);

@@ -83,6 +83,8 @@ class AuthenticatedToolboxClient(ToolboxSyncClient):
 
 class SuperGeminiRetailChatbot:
     def __init__(self, config):
+        # Local query history storage (fallback when BigQuery is unavailable)
+        self.local_query_history = []
         self.config = config
         self.store_mappings = get_store_mappings()
         self.shop_mappings = get_shop_mappings()
@@ -191,6 +193,19 @@ class SuperGeminiRetailChatbot:
         This replaces the complex intent extraction and SQL generation logic.
         """
         query_lower = query.lower()
+        
+        # Check for direct tool execution request
+        if 'execute mcp tool:' in query_lower:
+            # Extract tool name from query like "Execute MCP tool: get_top_selling_items"
+            import re
+            match = re.search(r'execute mcp tool:\s*(\w+)', query_lower)
+            if match:
+                tool_name = match.group(1)
+                if tool_name in self.tools:
+                    logger.info(f"Direct tool execution requested: {tool_name}")
+                    # Extract parameters based on the tool
+                    parameters = self._extract_parameters_from_query(query, tool_name)
+                    return tool_name, parameters
         
         # Simple keyword-based mapping to tools
         tool_mappings = {
@@ -305,14 +320,48 @@ class SuperGeminiRetailChatbot:
         if year_match:
             year_filter = int(year_match.group(1))
         
-        # Extract days back
-        days_back = 30  # Default
-        if 'last 7 days' in query_lower or 'last week' in query_lower or '7 day' in query_lower:
+        # Extract days back with enhanced date parsing
+        days_back = 42  # Default to 42 days
+        
+        # Import datetime for potential date parsing
+        from datetime import datetime, timedelta
+        
+        # Check for specific day counts
+        day_pattern = r'last\s+(\d+)\s+days?|past\s+(\d+)\s+days?|(\d+)\s+days?\s+(?:back|ago)'
+        day_match = re.search(day_pattern, query_lower)
+        if day_match:
+            days_back = int(next(g for g in day_match.groups() if g))
+        
+        # Check for week/month patterns
+        elif 'last week' in query_lower or 'past week' in query_lower:
             days_back = 7
-        elif 'last 30 days' in query_lower or '30 day' in query_lower:
+        elif 'last 2 weeks' in query_lower or 'past 2 weeks' in query_lower:
+            days_back = 14
+        elif 'last month' in query_lower or 'past month' in query_lower:
             days_back = 30
-        elif 'last 90 days' in query_lower or '90 day' in query_lower:
+        elif 'last 3 months' in query_lower or 'past 3 months' in query_lower:
             days_back = 90
+        elif 'last 6 months' in query_lower or 'past 6 months' in query_lower:
+            days_back = 180
+        elif 'last year' in query_lower or 'past year' in query_lower:
+            days_back = 365
+        
+        # Check for specific date ranges (e.g., "from January 1 to January 31")
+        date_range_pattern = r'from\s+(\w+\s+\d{1,2})\s+to\s+(\w+\s+\d{1,2})'
+        date_range_match = re.search(date_range_pattern, query_lower)
+        if date_range_match:
+            # For now, estimate days back based on current date
+            # This is a simplified version - could be enhanced further
+            try:
+                # Rough estimation - could be enhanced with proper date parsing
+                days_back = 30  # Default for date ranges
+            except:
+                pass
+        
+        # Store year-over-year flag for later use
+        year_over_year = False
+        if 'year over year' in query_lower or 'yoy' in query_lower or 'versus last year' in query_lower:
+            year_over_year = True
         elif 'last year' in query_lower or '365 day' in query_lower:
             days_back = 365
         elif year_filter > 0:  # If specific year mentioned
@@ -331,6 +380,8 @@ class SuperGeminiRetailChatbot:
         elif tool_name == 'get_inventory_status':
             return {
                 'store_id': store_id,
+                'shop_id': shop_id,  # Add shop_id support
+                'risk_level': 'all',  # Add risk level
                 'min_on_hand': 0,
                 'limit': limit
             }
@@ -338,6 +389,7 @@ class SuperGeminiRetailChatbot:
         elif tool_name == 'get_out_of_stock_items':
             return {
                 'store_id': store_id,
+                'shop_id': shop_id,  # Add shop_id support
                 'min_sales_30d': 1,
                 'limit': limit
             }
@@ -345,6 +397,7 @@ class SuperGeminiRetailChatbot:
         elif tool_name == 'get_overstock_items':
             return {
                 'store_id': store_id,
+                'shop_id': shop_id,  # Add shop_id support
                 'days_supply_threshold': 90,
                 'limit': limit
             }
@@ -353,14 +406,18 @@ class SuperGeminiRetailChatbot:
             return {
                 'days_back': days_back,
                 'store_id': store_id,
-                'shop_id': shop_id
+                'shop_id': shop_id,
+                'granularity': 'daily',  # Add default granularity
+                'include_comparisons': True  # Add default comparisons
             }
         
         elif tool_name == 'get_top_margin_items':
             return {
                 'limit': limit,
                 'min_revenue': 1000,
-                'days_back': days_back
+                'days_back': days_back,
+                'store_id': store_id,  # Add store_id support
+                'shop_id': shop_id  # Add shop_id support
             }
         
         elif tool_name == 'get_return_analysis':
@@ -371,19 +428,96 @@ class SuperGeminiRetailChatbot:
             }
         
         elif tool_name == 'get_comparison_analysis':
-            # Extract store IDs for comparison
-            store1_id = 64  # default
-            store2_id = 65  # default
+            # Extract store IDs from query using regex
+            import re
+            store_pattern = r'store\s+(\d+)'
+            store_matches = re.findall(store_pattern, query_lower)
             
-            if 'store 64' in query_lower:
-                store1_id = 64
-            if 'store 65' in query_lower:
-                store2_id = 65
+            # No defaults - require explicit store IDs
+            store1_id = 0
+            store2_id = 0
+            
+            # Assign found store IDs
+            if len(store_matches) >= 1:
+                store1_id = int(store_matches[0])
+            if len(store_matches) >= 2:
+                store2_id = int(store_matches[1])
+            
+            # If only one store specified, don't do comparison
+            if store1_id > 0 and store2_id == 0:
+                # Switch to top selling items for single store
+                logger.info(f"Only one store specified ({store1_id}), switching to top selling items")
+                return 'get_top_selling_items', {'store_id': store1_id}
+                
+            logger.info(f"Extracted store IDs: store1={store1_id}, store2={store2_id} from query: {query_lower}")
+            
+            # Extract limit for comparison (default 25)
+            comparison_limit = 25
+            if 'top' in query_lower:
+                limit_match = re.search(r'top\s+(\d+)', query_lower)
+                if limit_match:
+                    comparison_limit = int(limit_match.group(1))
             
             return {
-                'store1_id': store1_id,
-                'store2_id': store2_id,
-                'days_back': days_back
+                'comparison_type': 'store',  # Default comparison type
+                'entity1_id': store1_id,  # Use entity1_id instead of store1_id
+                'entity2_id': store2_id,  # Use entity2_id instead of store2_id
+                'days_back': days_back,
+                'metric_focus': 'all',  # Default metric focus
+                'limit': comparison_limit
+            }
+        
+        # Add new tools
+        elif tool_name == 'get_units_vs_dollars_comparison':
+            return {
+                'store_id': store_id,
+                'shop_id': shop_id,
+                'days_back': days_back,
+                'limit': limit
+            }
+        
+        elif tool_name == 'get_shop_performance':
+            return {
+                'shop_id': shop_id,
+                'store_id': store_id,
+                'days_back': days_back,
+                'metric_focus': 'revenue'  # Default metric
+                # NO limit parameter
+            }
+        
+        elif tool_name == 'get_sell_through_rates':
+            return {
+                'store_id': store_id,
+                'shop_id': shop_id,
+                'days_period': 30,  # Default 30 days
+                'min_beginning_inventory': 10  # Default minimum
+                # NO limit parameter
+            }
+        
+        elif tool_name == 'get_time_period_comparison':
+            comparison_type = 'mom'  # Default month-over-month
+            if 'year over year' in query_lower or 'yoy' in query_lower:
+                comparison_type = 'yoy'
+            elif 'week over week' in query_lower or 'wow' in query_lower:
+                comparison_type = 'wow'
+            elif 'weekday' in query_lower or 'weekend' in query_lower:
+                comparison_type = 'weekday_weekend'
+                
+            return {
+                'comparison_type': comparison_type,
+                'store_id': store_id,
+                'shop_id': shop_id,
+                'aggregation_level': 'daily'  # Default aggregation
+                # NO limit parameter
+            }
+        
+        elif tool_name == 'get_inventory_risk_assessment':
+            return {
+                'store_id': store_id,
+                # NO shop_id parameter
+                'min_priority_score': 0,  # Default to show all
+                'include_overstocked': True,  # Default include overstocked
+                'limit': limit
             }
         
         # Fallback for unknown tools
@@ -431,6 +565,9 @@ class SuperGeminiRetailChatbot:
             
             logger.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
             
+            # Log parameters for debugging
+            logger.info(f"Calling MCP tool '{tool_name}' with parameters: {json.dumps(parameters, indent=2)}")
+            
             # Call the tool with extracted parameters
             result = tool(**parameters)
             execution_time = int((time.time() - start_time) * 1000)
@@ -455,6 +592,7 @@ class SuperGeminiRetailChatbot:
             self.last_df = df.copy()
             self.last_query = user_query
             self.last_tool_used = tool_name
+            # Keep raw data for calculations
             self.last_results = df.to_dict('records')
             self.last_data = self.last_results
             
@@ -469,43 +607,21 @@ class SuperGeminiRetailChatbot:
             logger.info(f"DataFrame shape: {df.shape}")
             logger.info(f"Query length: {len(user_query)}")
             
-            # AUTO-GENERATE SUMMARY after successful MCP tool execution
+            # Skip auto-summary for lazy loading - will be done via separate endpoint
             auto_summary = None
             summary_error = None
-            summary_start_time = time.time()
+            execution_times['summary_generation_ms'] = 0
             
-            try:
-                logger.info(f"Auto-generating summary with model: {model_name}")
-                
-                # Create toolbox context for enhanced summary
-                toolbox_context = {
-                    'tool_name': tool_name,
-                    'toolbox_used': True,
-                    'execution_method': 'MCP Toolbox',
-                    'parameters': parameters,
-                    'execution_time_ms': execution_time
-                }
-                
-                # Generate summary using the specified model
-                auto_summary = generate_summary(
-                    df, 
-                    user_query, 
-                    model_name or self.config.model_name, 
-                    self.available_models, 
-                    self.api_clients, 
-                    self.bigquery_utils,
-                    toolbox_context=toolbox_context
-                )
-                
-                summary_execution_time = int((time.time() - summary_start_time) * 1000)
-                execution_times['summary_generation_ms'] = summary_execution_time
-                
-                logger.info(f"Auto-summary generated successfully in {summary_execution_time}ms")
-                
-            except Exception as e:
-                summary_error = str(e)
-                logger.error(f"Auto-summary generation failed: {e}")
-                execution_times['summary_generation_ms'] = int((time.time() - summary_start_time) * 1000)
+            # Store query context for later summary generation
+            self.last_query_context = {
+                'query_id': query_id,
+                'user_query': user_query,
+                'tool_name': tool_name,
+                'parameters': parameters,
+                'execution_time': execution_time,
+                'df': df,
+                'model_name': model_name
+            }
             
             execution_times['total_ms'] = int((time.time() - total_start_time) * 1000)
             
@@ -531,15 +647,35 @@ class SuperGeminiRetailChatbot:
             except Exception as e:
                 logger.error(f"Failed to log to BigQuery: {e}")
             
+            # Add to local query history as fallback
+            self._add_to_local_history({
+                'query_id': query_id,
+                'timestamp': pd.Timestamp.now().isoformat(),
+                'user_query': user_query,
+                'model_name': f"mcp_{tool_name}",
+                'success': True,
+                'error_message': None,
+                'row_count': len(df),
+                'execution_time_ms': execution_times.get('total_ms', 0),
+                'tool_name': tool_name,
+                'parameters': parameters,
+                'user_id': user_id or "anonymous",
+                'session_id': session_id or "default"
+            })
+            
             # Format results for return
-            results = self._format_results(df)
+            # Format only for display
+            formatted_results = self._format_results(df)
+            
+            # Keep raw data for calculations and LLM
+            raw_data = df.to_dict('records')
             
             response = {
                 'success': True,
                 'error': None,
                 'sql': f"[MCP Tool: {tool_name}]",
-                'results': results,
-                'results_data': results,  # Add this for table rendering
+                'results': formatted_results,  # Formatted for display
+                'results_data': raw_data,  # Raw data for calculations
                 'row_count': len(df),
                 'has_data': True,
                 'query_id': query_id,
@@ -551,11 +687,9 @@ class SuperGeminiRetailChatbot:
                 'parameters': parameters
             }
             
-            # Add auto-summary to response if generated
-            if auto_summary:
-                response['auto_summary'] = auto_summary
-            elif summary_error:
-                response['summary_error'] = summary_error
+            # Indicate summary is pending (will be loaded lazily)
+            response['summary_pending'] = True
+            response['auto_summary'] = None
             
             return response
             
@@ -580,6 +714,22 @@ class SuperGeminiRetailChatbot:
             except Exception as log_error:
                 logger.error(f"Failed to log error to BigQuery: {log_error}")
             
+            # Add to local query history as fallback
+            self._add_to_local_history({
+                'query_id': query_id,
+                'timestamp': pd.Timestamp.now().isoformat(),
+                'user_query': user_query,
+                'model_name': f"mcp_{tool_name}",
+                'success': False,
+                'error_message': str(e),
+                'row_count': None,
+                'execution_time_ms': execution_times.get('total_ms', 0),
+                'tool_name': tool_name,
+                'parameters': parameters,
+                'user_id': user_id or "anonymous",
+                'session_id': session_id or "default"
+            })
+            
             return {
                 'success': False,
                 'error': f'MCP tool execution failed: {str(e)}',
@@ -601,10 +751,9 @@ class SuperGeminiRetailChatbot:
             if df is None or df.empty:
                 return df
             
-            # Apply smart auto-formatting
-            formatted_df = self._apply_smart_formatting(df, tool_name)
-            
-            return formatted_df
+            # Don't apply formatting here - keep raw data for calculations
+            # Formatting should only happen for display
+            return df
             
         except Exception as e:
             logger.error(f"Failed to process MCP result: {str(e)}")
@@ -921,8 +1070,9 @@ class SuperGeminiRetailChatbot:
         if len(df) > preview_rows:
             logger.info(f"Retrieved {len(df)} rows, displaying first {preview_rows} for UI")
         
-        # Convert to records - data is already perfectly formatted
-        results = df.head(preview_rows).to_dict('records')
+        # Apply smart formatting for display only
+        display_df = self._apply_smart_formatting(df.head(preview_rows), self.last_tool_used)
+        results = display_df.to_dict('records')
         
         # Only handle null values and timestamps
         for row in results:
@@ -955,6 +1105,64 @@ class SuperGeminiRetailChatbot:
                 }
         except Exception as e:
             logger.error(f"Chart generation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def generate_summary_for_last_query(self, model_name: str = None) -> Dict[str, Any]:
+        """Generate summary for the last query context (for lazy loading)"""
+        try:
+            if not hasattr(self, 'last_query_context') or not self.last_query_context:
+                return {
+                    'success': False,
+                    'error': 'No query context available'
+                }
+            
+            context = self.last_query_context
+            df = context.get('df')
+            user_query = context.get('user_query', '')
+            tool_name = context.get('tool_name', '')
+            execution_time = context.get('execution_time', 0)
+            
+            if df is None or len(df) == 0:
+                return {
+                    'success': False,
+                    'error': 'No data available for summary'
+                }
+            
+            # Use provided model or the one from context
+            summary_model = model_name or context.get('model_name') or self.config.model_name
+            
+            # Create toolbox context for enhanced summary
+            toolbox_context = {
+                'tool_name': tool_name,
+                'toolbox_used': True,
+                'execution_method': 'MCP Toolbox',
+                'parameters': context.get('parameters', {}),
+                'execution_time_ms': execution_time
+            }
+            
+            # Generate summary
+            summary = generate_summary(
+                df, 
+                user_query, 
+                summary_model, 
+                self.available_models, 
+                self.api_clients, 
+                self.bigquery_utils,
+                toolbox_context=toolbox_context
+            )
+            
+            return {
+                'success': True,
+                'summary': summary,
+                'model_used': summary_model,
+                'query_id': context.get('query_id')
+            }
+            
+        except Exception as e:
+            logger.error(f"Summary generation failed: {e}")
             return {
                 'success': False,
                 'error': str(e)
@@ -1028,3 +1236,43 @@ class SuperGeminiRetailChatbot:
             'system_mode': 'MCP-Only (No SQL Fallback)',
             'auth_enabled': getattr(self.toolbox, 'use_auth', False) if self.toolbox else False
         }
+    
+    def _add_to_local_history(self, query_data: Dict[str, Any]):
+        """Add query to local history (used as fallback when BigQuery is unavailable)"""
+        try:
+            # Keep only the last 100 queries in memory
+            if len(self.local_query_history) >= 100:
+                self.local_query_history.pop(0)
+            
+            self.local_query_history.append(query_data)
+            logger.debug(f"Added query {query_data['query_id']} to local history")
+        except Exception as e:
+            logger.error(f"Failed to add query to local history: {e}")
+    
+    def get_local_query_history(self, user_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get query history from local storage (fallback for when BigQuery is unavailable)"""
+        try:
+            # First try to get from BigQuery
+            try:
+                bq_history = self.bigquery_utils.get_query_history(user_id, limit)
+                if bq_history:
+                    logger.info(f"Retrieved {len(bq_history)} queries from BigQuery")
+                    return bq_history
+            except Exception as e:
+                logger.warning(f"Failed to get history from BigQuery, using local: {e}")
+            
+            # Fall back to local history
+            history = self.local_query_history.copy()
+            
+            # Filter by user_id if provided
+            if user_id:
+                history = [q for q in history if q.get('user_id') == user_id]
+            
+            # Sort by timestamp descending (most recent first)
+            history.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            
+            # Limit results
+            return history[:limit]
+        except Exception as e:
+            logger.error(f"Failed to get local query history: {e}")
+            return []

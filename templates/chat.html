@@ -386,6 +386,128 @@ button:disabled {
 .secondary-button:hover {
     box-shadow: 0 8px 25px rgba(52, 211, 153, 0.4);
 }
+
+/* Side Tray Styles */
+.side-tray {
+    position: fixed;
+    top: 0;
+    right: -400px;
+    width: 400px;
+    height: 100%;
+    background: white;
+    box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+.side-tray.open {
+    right: 0;
+}
+
+.side-tray-header {
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.side-tray-header h3 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.close-tray {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.close-tray:hover {
+    background-color: rgba(255,255,255,0.2);
+}
+
+.side-tray-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.query-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.query-history-item {
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #e0e0e0;
+}
+
+.query-history-item:hover {
+    background: #e9ecef;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.query-history-time {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+.query-history-text {
+    color: #212529;
+    font-weight: 500;
+    margin-bottom: 5px;
+}
+
+.query-history-meta {
+    font-size: 0.85em;
+    color: #6c757d;
+    display: flex;
+    justify-content: space-between;
+}
+
+.history-toggle-btn {
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    transition: all 0.3s ease;
+    z-index: 999;
+}
+
+.history-toggle-btn:hover {
+    transform: translateY(-50%) scale(1.1);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
 </style>
 {% endblock %}
 
@@ -426,6 +548,24 @@ button:disabled {
     </div>
 </div>
 
+<!-- Query History Side Tray -->
+<div class="side-tray" id="queryHistoryTray">
+    <div class="side-tray-header">
+        <h3>📚 Query History</h3>
+        <button class="close-tray" onclick="closeQueryHistory()">&times;</button>
+    </div>
+    <div class="side-tray-content">
+        <div id="queryHistoryList" class="query-history-list">
+            <!-- Query history items will be populated here -->
+        </div>
+    </div>
+</div>
+
+<!-- Toggle Button for Query History -->
+<button class="history-toggle-btn" onclick="toggleQueryHistory()" title="View Query History">
+    📜
+</button>
+
 <!-- Export Dialog -->
 <div class="export-dialog" id="exportDialog">
     <div class="export-content">
@@ -436,6 +576,21 @@ button:disabled {
             <button onclick="exportData('json')" class="tertiary-button">📋 JSON</button>
         </div>
         <button onclick="closeExportDialog()">Cancel</button>
+    </div>
+</div>
+
+<!-- Model Configuration Dialog -->
+<div class="export-dialog" id="modelConfigDialog">
+    <div class="export-content" style="max-width: 600px;">
+        <h3>🤖 Configure Available Models</h3>
+        <p style="margin-bottom: 20px;">Select which models to show in the dropdown:</p>
+        <div id="modelConfigList" style="max-height: 400px; overflow-y: auto; margin: 20px 0;">
+            <!-- Model checkboxes will be populated here -->
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="saveModelConfig()" class="secondary-button">Save</button>
+            <button onclick="closeModelConfig()">Cancel</button>
+        </div>
     </div>
 </div>
 {% endblock %}

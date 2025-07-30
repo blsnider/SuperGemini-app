@@ -46,10 +46,12 @@ def generate_summary(df, query, model_name, available_models, api_clients, bigqu
     - Execution time: {toolbox_context.get('execution_time_ms', 0)}ms
     """
     
+    # Use more data for LLM analysis - up to 50 rows for better insights
+    rows_to_show = min(50, len(df))
     data_summary += f"""
     
-    Top 10 Results:
-    {df.head(10).to_string()}
+    Data Sample ({rows_to_show} of {len(df)} total rows):
+    {df.head(rows_to_show).to_string()}
     
     Statistical Summary:
     {df.describe().to_string() if not df.empty else 'No numeric data'}
@@ -411,11 +413,12 @@ def generate_parallel_summary(df, query, models_list, api_clients, bigquery_util
     # Determine the appropriate prompt based on data type
     data_analysis = _analyze_data_content(df, query)
     
-    # Build data summary
+    # Build data summary with more data for better insights
+    rows_to_show = min(50, len(df))
     data_summary = f"""
     Query: {query}
     Data Overview: {len(df)} rows, Columns: {', '.join(df.columns)}
-    Top 5 Results: {df.head(5).to_string()}
+    Data Sample ({rows_to_show} of {len(df)} total rows): {df.head(rows_to_show).to_string()}
     """
     
     # Select appropriate prompt

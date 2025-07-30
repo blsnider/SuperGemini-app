@@ -1,0 +1,29 @@
+# .dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.env
+.venv
+env/
+venv/
+*.md
+.DS_Store
+*.log
+.pytest_cache
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Don't ignore static files or templates!
+# !static/
+# !templates/

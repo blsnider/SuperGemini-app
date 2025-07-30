@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
     <!-- Core CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_css %}{% endblock %}
@@ -66,6 +69,11 @@
             
             <button class="nav-button" onclick="clearHistory()" style="margin-top: 10px; font-size: 0.85em;">
                 <i>🗑️</i> Clear History
+            </button>
+            
+            <h3 style="margin-top: 20px;">⚙️ Configuration</h3>
+            <button class="nav-button" onclick="showModelConfig()" style="font-size: 0.9em;">
+                <i>🤖</i> Configure Models
             </button>
         </div>
         

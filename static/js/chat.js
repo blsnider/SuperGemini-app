@@ -42,9 +42,18 @@ class ChatManager {
         const select = document.getElementById('modelSelect');
         select.innerHTML = '';
         
+        // Get enabled models from localStorage
+        const enabledModels = this.getEnabledModels();
+        const hasEnabledFilter = enabledModels.length > 0;
+        
         const providers = {};
         
         Object.entries(models).forEach(([modelId, config]) => {
+            // Skip if model is not enabled
+            if (hasEnabledFilter && !enabledModels.includes(modelId)) {
+                return;
+            }
+            
             const provider = config.provider || 'unknown';
             if (!providers[provider]) {
                 providers[provider] = [];
@@ -87,6 +96,11 @@ class ChatManager {
         return names[provider] || `🔘 ${provider}`;
     }
     
+    getEnabledModels() {
+        const stored = localStorage.getItem('enabledModels');
+        return stored ? JSON.parse(stored) : [];
+    }
+    
     setupEventListeners() {
         // Submit button
         const submitBtn = document.getElementById('submitButton');
@@ -109,6 +123,11 @@ class ChatManager {
         if (exportBtn) {
             exportBtn.addEventListener('click', () => this.showExportDialog());
         }
+        
+        // Make updateModelDropdown available globally for config dialog
+        window.updateModelDropdown = () => {
+            this.loadModels();
+        };
     }
     
     async submitQuery() {
@@ -212,11 +231,26 @@ class ChatManager {
             content += '</div>';
         }
         
+        // Handle summary - either show it or show loading placeholder
         if (data.auto_summary) {
             content += '<div class="summary-box" style="margin: 20px 0;">';
-            content += '<h4>🤖 AI Insights (Auto-Generated)</h4>';
+            content += '<h4>🤖 AI Insights</h4>';
             content += data.auto_summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
             content += '</div>';
+        } else if (data.summary_pending) {
+            // Add placeholder for lazy loading
+            content += `<div class="summary-box" id="summary-${data.query_id}" style="margin: 20px 0;">`;
+            content += '<h4>🤖 AI Insights</h4>';
+            content += '<div class="summary-loading">';
+            content += '<div class="spinner" style="width: 20px; height: 20px; margin: 0 auto 10px;"></div>';
+            content += '<p style="color: #667eea; margin: 0;">Generating insights...</p>';
+            content += '</div>';
+            content += '</div>';
+            
+            // Trigger lazy loading of summary
+            setTimeout(() => {
+                this.loadSummary(data.query_id, modelName);
+            }, 100);
         }
         
         // Display results
@@ -295,21 +329,30 @@ class ChatManager {
     formatCellValue(value, column) {
         if (value === null || value === undefined) return '';
         
-        if (column.includes('pct') || column.includes('percent')) {
+        const columnLower = column.toLowerCase();
+        
+        // Check for margin or percentage columns
+        if (columnLower.includes('margin') || columnLower.includes('pct') || 
+            columnLower.includes('percent') || columnLower.includes('%')) {
             const num = parseFloat(value);
             if (!isNaN(num)) {
                 return `${num.toFixed(1)}%`;
             }
         }
         
-        if (column.includes('cost') || column.includes('revenue') || column.includes('price')) {
+        // Check for currency columns (but not margin!)
+        if ((columnLower.includes('cost') || columnLower.includes('revenue') || 
+             columnLower.includes('price') || columnLower.includes('profit') || 
+             columnLower.includes('cogs')) && !columnLower.includes('margin')) {
             const num = parseFloat(value);
             if (!isNaN(num)) {
                 return `$${num.toLocaleString()}`;
             }
         }
         
-        if (column.includes('units') || column.includes('count')) {
+        // Check for unit/quantity columns
+        if (columnLower.includes('units') || columnLower.includes('count') || 
+            columnLower.includes('quantity')) {
             const num = parseFloat(value);
             if (!isNaN(num)) {
                 return num.toLocaleString();
@@ -320,9 +363,27 @@ class ChatManager {
     }
     
     getCellClass(column) {
-        if (column.includes('pct') || column.includes('percent')) return 'percentage';
-        if (column.includes('cost') || column.includes('revenue') || column.includes('price')) return 'currency';
-        if (column.includes('units') || column.includes('count')) return 'units';
+        const columnLower = column.toLowerCase();
+        
+        // Check for margin or percentage columns
+        if (columnLower.includes('margin') || columnLower.includes('pct') || 
+            columnLower.includes('percent') || columnLower.includes('%')) {
+            return 'percentage';
+        }
+        
+        // Check for currency columns (but not margin!)
+        if ((columnLower.includes('cost') || columnLower.includes('revenue') || 
+             columnLower.includes('price') || columnLower.includes('profit') || 
+             columnLower.includes('cogs')) && !columnLower.includes('margin')) {
+            return 'currency';
+        }
+        
+        // Check for unit columns
+        if (columnLower.includes('units') || columnLower.includes('count') || 
+            columnLower.includes('quantity')) {
+            return 'units';
+        }
+        
         return '';
     }
     
@@ -362,6 +423,53 @@ class ChatManager {
             .replace(/'/g, "&#039;");
     }
     
+    async loadSummary(queryId, modelName) {
+        try {
+            const response = await fetch('/api/chat/summary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query_id: queryId,
+                    model: modelName
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const summaryDiv = document.getElementById(`summary-${queryId}`);
+            
+            if (!summaryDiv) return;
+            
+            if (data.success && data.summary) {
+                // Replace loading with actual summary
+                summaryDiv.innerHTML = `
+                    <h4>🤖 AI Insights</h4>
+                    ${data.summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>')}
+                `;
+            } else {
+                // Show error state
+                summaryDiv.innerHTML = `
+                    <h4>🤖 AI Insights</h4>
+                    <p style="color: #666; font-style: italic;">Unable to generate insights: ${data.error || 'Unknown error'}</p>
+                `;
+            }
+        } catch (error) {
+            console.error('Failed to load summary:', error);
+            const summaryDiv = document.getElementById(`summary-${queryId}`);
+            if (summaryDiv) {
+                summaryDiv.innerHTML = `
+                    <h4>🤖 AI Insights</h4>
+                    <p style="color: #666; font-style: italic;">Failed to load insights</p>
+                `;
+            }
+        }
+    }
+    
     showExportDialog() {
         document.getElementById('exportDialog').style.display = 'flex';
     }
@@ -397,4 +505,89 @@ function exportData(format) {
     // Implement export functionality
     console.log('Export format:', format);
     closeExportDialog();
+}
+
+// Query History Functions
+let queryHistoryOpen = false;
+
+function toggleQueryHistory() {
+    queryHistoryOpen = !queryHistoryOpen;
+    const tray = document.getElementById('queryHistoryTray');
+    
+    if (queryHistoryOpen) {
+        tray.classList.add('open');
+        loadQueryHistory();
+    } else {
+        tray.classList.remove('open');
+    }
+}
+
+function closeQueryHistory() {
+    queryHistoryOpen = false;
+    document.getElementById('queryHistoryTray').classList.remove('open');
+}
+
+async function loadQueryHistory() {
+    const historyList = document.getElementById('queryHistoryList');
+    historyList.innerHTML = '<div style="text-align: center; padding: 20px;">Loading...</div>';
+    
+    try {
+        const response = await fetch('/api/chat/queries?limit=50');
+        const data = await response.json();
+        
+        if (data.success && data.queries) {
+            displayQueryHistory(data.queries);
+        } else {
+            historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #6c757d;">No query history available</div>';
+        }
+    } catch (error) {
+        console.error('Failed to load query history:', error);
+        historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Failed to load history</div>';
+    }
+}
+
+function displayQueryHistory(queries) {
+    const historyList = document.getElementById('queryHistoryList');
+    
+    if (queries.length === 0) {
+        historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #6c757d;">No queries yet</div>';
+        return;
+    }
+    
+    historyList.innerHTML = queries.map(query => {
+        const time = new Date(query.timestamp).toLocaleString();
+        const status = query.success ? '✅' : '❌';
+        const rowCount = query.row_count !== null ? `${query.row_count} rows` : 'No data';
+        
+        return `
+            <div class="query-history-item" onclick="rerunQuery('${encodeURIComponent(query.user_query)}')">
+                <div class="query-history-time">${time}</div>
+                <div class="query-history-text">${query.user_query}</div>
+                <div class="query-history-meta">
+                    <span>${status} ${rowCount}</span>
+                    <span>${query.tool_name || query.model_name || 'Unknown'}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function rerunQuery(encodedQuery) {
+    const query = decodeURIComponent(encodedQuery);
+    document.getElementById('queryInput').value = query;
+    closeQueryHistory();
+    submitQuery();
+}
+
+// Auto-refresh query history when a new query is submitted
+const originalSubmitQuery = window.submitQuery;
+window.submitQuery = async function() {
+    const result = await originalSubmitQuery.apply(this, arguments);
+    
+    // Refresh query history if the tray is open
+    if (queryHistoryOpen) {
+        setTimeout(() => loadQueryHistory(), 1000);
+    }
+    
+    return result;
 }

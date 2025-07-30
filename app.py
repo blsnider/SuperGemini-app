@@ -106,8 +106,9 @@ def load_api_keys():
     except Exception as e:
         logger.error(f"Error loading API keys: {e}")
 
-# Load API keys at startup
-load_api_keys()
+# Load API keys at startup (skip if we're just building Docker image)
+if os.getenv('SKIP_INIT') != 'true':
+    load_api_keys()
 
 # Import your existing modules
 try:
@@ -141,8 +142,23 @@ config = AppConfig()
 logger.info(f"Configuration: {config}")
 
 # Initialize services - using your existing chatbot initialization pattern
-chatbot = SuperGeminiRetailChatbot(config)
-dashboard_manager = DashboardManager()
+# Defer initialization to avoid issues during Docker build
+chatbot = None
+dashboard_manager = None
+
+def get_chatbot():
+    """Lazy initialization of chatbot"""
+    global chatbot
+    if chatbot is None:
+        chatbot = SuperGeminiRetailChatbot(config)
+    return chatbot
+
+def get_dashboard_manager():
+    """Lazy initialization of dashboard manager"""
+    global dashboard_manager
+    if dashboard_manager is None:
+        dashboard_manager = DashboardManager()
+    return dashboard_manager
 
 # =============================================================================
 # PAGE ROUTES (Serve HTML pages)
@@ -190,7 +206,7 @@ def api_chat_message():
         if not query:
             return jsonify({'success': False, 'error': 'Query is required'}), 400
             
-        response = chatbot.chat(query, model)
+        response = get_chatbot().chat(query, model)
         return jsonify(response)
         
     except Exception as e:
@@ -207,12 +223,72 @@ def api_get_models():
         logger.error(f"Models API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/chat/summary', methods=['POST'])
+def api_generate_summary():
+    """Generate summary for last query - lazy loading endpoint"""
+    try:
+        data = request.get_json()
+        model = data.get('model')
+        query_id = data.get('query_id')
+        
+        bot = get_chatbot()
+        if not bot:
+            return jsonify({'success': False, 'error': 'Chatbot not initialized'}), 500
+        
+        # Generate summary for the last query
+        result = bot.generate_summary_for_last_query(model)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Summary generation error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/mcp/test')
+def test_mcp():
+    """Test MCP toolbox connection and tools"""
+    try:
+        bot = get_chatbot()
+        if not bot or not bot.toolbox_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'MCP toolbox not enabled',
+                'toolbox_enabled': bot.toolbox_enabled if bot else False
+            })
+        
+        # Get available tools
+        tools_list = []
+        if hasattr(bot, 'tools') and isinstance(bot.tools, dict):
+            tools_list = list(bot.tools.keys())
+        
+        # Test a simple query
+        test_result = None
+        if 'get_sales_trends' in tools_list:
+            try:
+                tool = bot.tools['get_sales_trends']
+                test_result = tool(days_back=7, store_id=0, shop_id=0)
+                test_result = {'success': True, 'rows': len(test_result) if test_result else 0}
+            except Exception as e:
+                test_result = {'success': False, 'error': str(e)}
+        
+        return jsonify({
+            'success': True,
+            'toolbox_enabled': True,
+            'available_tools': tools_list,
+            'tools_count': len(tools_list),
+            'test_query': test_result
+        })
+        
+    except Exception as e:
+        logger.error(f"MCP test error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Dashboard API endpoints
 @app.route('/api/dashboard/kpis')
 def api_dashboard_kpis():
     """Get executive KPIs - API endpoint"""
     try:
-        kpis = dashboard_manager.get_executive_kpis()
+        kpis = get_dashboard_manager().get_executive_kpis()
         return jsonify({'success': True, 'data': kpis})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -224,7 +300,7 @@ def api_sales_trends():
     store_id = request.args.get('store_id', 0, type=int)
     
     try:
-        trends = dashboard_manager.get_sales_trends(period, store_id)
+        trends = get_dashboard_manager().get_sales_trends(period, store_id)
         return jsonify({'success': True, 'data': trends})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -236,7 +312,7 @@ def api_top_performers():
     store_id = request.args.get('store_id', 0, type=int)
     
     try:
-        performers = dashboard_manager.get_top_performers(limit, store_id)
+        performers = get_dashboard_manager().get_top_performers(limit, store_id)
         return jsonify({'success': True, 'data': performers})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -245,7 +321,7 @@ def api_top_performers():
 def api_stock_alerts():
     """Get stock alerts - API endpoint"""
     try:
-        alerts = dashboard_manager.get_stock_alerts()
+        alerts = get_dashboard_manager().get_stock_alerts()
         return jsonify({'success': True, 'data': alerts})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -258,13 +334,62 @@ def api_dashboard_metrics():
         store_id = request.args.get('store_id', 0, type=int)
         shop_id = request.args.get('shop_id', 0, type=int)
         
-        # For now, return sample metrics
+        logger.info(f"Fetching dashboard metrics for store: {store_id}, shop: {shop_id}")
+        
+        # Build query for sales trends to get detailed data
+        query = f"show me sales trends"
+        if store_id > 0:
+            query += f" for store {store_id}"
+        if shop_id > 0:
+            query += f" in shop {shop_id}"
+        query += " for last 42 days"
+        
+        # Get data from chatbot/MCP
+        result = get_chatbot().chat(query, config.model_name)
+        
+        # Extract metrics from result
         metrics = {
-            'total_revenue': 1250000,
-            'total_orders': 3456,
-            'avg_order_value': 362,
-            'return_rate': 3.5
+            'total_revenue': 0,
+            'margin_pct': 0,
+            'total_units': 0,
+            'total_profit': 0,
+            'total_cogs': 0
         }
+        
+        if result.get('success') and result.get('has_data'):
+            # Try to extract metrics from the data
+            try:
+                results_data = result.get('results_data', [])
+                if results_data and len(results_data) > 0:
+                    # Sum up the metrics from the data
+                    total_revenue = 0
+                    total_units = 0
+                    total_profit = 0
+                    
+                    for row in results_data:
+                        # Handle different possible column names
+                        revenue = float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
+                        units = int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
+                        profit = float(row.get('total_profit', 0) or row.get('profit', 0) or 0)
+                        
+                        total_revenue += revenue
+                        total_units += units
+                        total_profit += profit
+                    
+                    # Calculate COGS and margin
+                    total_cogs = total_revenue - total_profit
+                    margin_pct = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+                    
+                    metrics['total_revenue'] = total_revenue
+                    metrics['margin_pct'] = margin_pct
+                    metrics['total_units'] = total_units
+                    metrics['total_profit'] = total_profit
+                    metrics['total_cogs'] = total_cogs
+                    
+                    logger.info(f"Calculated metrics: {metrics}")
+            except Exception as calc_error:
+                logger.error(f"Error calculating metrics: {calc_error}")
+                logger.error(f"Sample data: {results_data[0] if results_data else 'No data'}")
         
         return jsonify({'success': True, 'metrics': metrics})
     except Exception as e:
@@ -278,14 +403,100 @@ def api_dashboard_chart(chart_type):
         store_id = request.args.get('store_id', 0, type=int)
         shop_id = request.args.get('shop_id', 0, type=int)
         
-        # For now, return a placeholder chart
-        chart_html = f"""
-        <div style="text-align: center; padding: 40px; background: white; border-radius: 8px;">
-            <h3>{chart_type.replace('_', ' ').title()} Chart</h3>
-            <p>Chart visualization would appear here</p>
-            <p style="color: #666; font-size: 0.9em;">Store: {store_id or 'All'} | Shop: {shop_id or 'All'}</p>
-        </div>
-        """
+        logger.info(f"Generating {chart_type} chart for store: {store_id}, shop: {shop_id}")
+        
+        # Map chart types to appropriate queries
+        chart_queries = {
+            'salesTrend': 'show me sales trends',
+            'topSellingItems': 'show me top 10 selling items',
+            'topMarginItems': 'show me top 10 items by margin',
+            'inventoryStatus': 'show inventory status',
+            'outOfStock': 'show out of stock items',
+            'overstockItems': 'show overstock items',
+            'storeComparison': 'show store comparison analysis'
+        }
+        
+        query = chart_queries.get(chart_type, 'show me sales data')
+        if store_id > 0:
+            query += f" for store {store_id}"
+        if shop_id > 0:
+            query += f" in shop {shop_id}"
+        query += " for last 42 days"
+        
+        # Get data from chatbot/MCP
+        result = get_chatbot().chat(query, config.model_name)
+        
+        if result.get('success') and result.get('has_data'):
+            # Generate chart visualization from result
+            try:
+                # Get the visualization if available
+                if result.get('visualization'):
+                    chart_html = result['visualization']
+                else:
+                    # Create a simple table view of the data
+                    results_data = result.get('results_data', [])
+                    if results_data:
+                        chart_html = '<div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">'
+                        chart_html += '<table>'
+                        
+                        # Headers
+                        if len(results_data) > 0:
+                            chart_html += '<thead><tr>'
+                            for key in results_data[0].keys():
+                                # Format header names
+                                display_header = key.replace('_', ' ').title()
+                                display_header = display_header.replace('Pct', '%').replace('Id', 'ID')
+                                chart_html += f'<th>{display_header}</th>'
+                            chart_html += '</tr></thead>'
+                        
+                        # Data rows
+                        chart_html += '<tbody>'
+                        for i, row in enumerate(results_data[:20]):  # Limit to 20 rows
+                            chart_html += '<tr>'
+                            for key, value in row.items():
+                                # Determine CSS class and format value
+                                css_class = ''
+                                if isinstance(value, (int, float)):
+                                    key_lower = str(key).lower()
+                                    # Check for margin/percentage columns first
+                                    if 'margin' in key_lower or 'pct' in key_lower or 'percent' in key_lower or '%' in key_lower:
+                                        display_value = f'{value:.1f}%'
+                                        css_class = 'percentage'
+                                    # Then check for units/count columns
+                                    elif 'units' in key_lower or 'count' in key_lower or 'quantity' in key_lower:
+                                        display_value = f'{int(value):,}'
+                                        css_class = 'units'
+                                    # Check for currency columns (but exclude margin!)
+                                    elif ('revenue' in key_lower or 'cost' in key_lower or 'price' in key_lower or 
+                                          'profit' in key_lower or 'cogs' in key_lower or 'sales' in key_lower) and 'margin' not in key_lower:
+                                        if value > 1000:
+                                            display_value = f'${value:,.0f}'
+                                        else:
+                                            display_value = f'${value:,.2f}'
+                                        css_class = 'currency'
+                                    # Default for other numbers
+                                    else:
+                                        if value > 1000:
+                                            display_value = f'{value:,.0f}'
+                                        else:
+                                            display_value = f'{value:,.2f}'
+                                else:
+                                    display_value = str(value)
+                                
+                                chart_html += f'<td class="{css_class}">{display_value}</td>'
+                            chart_html += '</tr>'
+                        chart_html += '</tbody></table></div>'
+                        
+                        if len(results_data) > 20:
+                            chart_html += f'<p style="text-align: center; color: #666; margin-top: 10px;">Showing first 20 of {len(results_data)} rows</p>'
+                    else:
+                        chart_html = '<div style="text-align: center; padding: 40px;">No data available</div>'
+            except Exception as viz_error:
+                logger.error(f"Error generating visualization: {viz_error}")
+                chart_html = f'<div style="text-align: center; padding: 40px; color: #ef4444;">Error generating chart: {str(viz_error)}</div>'
+        else:
+            error_msg = result.get('error', 'No data available')
+            chart_html = f'<div style="text-align: center; padding: 40px; color: #666;">{error_msg}</div>'
         
         return jsonify({'success': True, 'chart_html': chart_html})
     except Exception as e:
@@ -301,13 +512,38 @@ def health_check():
     """Health check endpoint"""
     try:
         # Test chatbot initialization
-        status = chatbot.get_toolbox_status() if hasattr(chatbot, 'get_toolbox_status') else {'status': 'unknown'}
+        bot = get_chatbot()
+        status = bot.get_toolbox_status() if bot and hasattr(bot, 'get_toolbox_status') else {'status': 'unknown'}
         return jsonify({
             'status': 'healthy' if status.get('toolbox_enabled', False) else 'degraded',
             'chatbot': status
         })
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+
+@app.route('/api/chat/queries')
+def get_query_history():
+    """Get query history from local storage or BigQuery"""
+    try:
+        bot = get_chatbot()
+        user_id = request.args.get('user_id')
+        limit = int(request.args.get('limit', 50))
+        
+        # Get query history from chatbot (will try BigQuery first, then local)
+        history = bot.get_local_query_history(user_id=user_id, limit=limit)
+        
+        return jsonify({
+            'success': True,
+            'queries': history,
+            'count': len(history)
+        })
+    except Exception as e:
+        logger.error(f"Failed to get query history: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'queries': []
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
