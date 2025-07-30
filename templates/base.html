@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}Super Gemini Analytics{% endblock %}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Core CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block extra_css %}{% endblock %}
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body data-page="{% block page_name %}default{% endblock %}">
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+        📊
+    </button>
+    
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    
+    <!-- Health Indicator -->
+    <div class="health-indicator" id="healthIndicator">
+        <span id="healthStatus">Checking...</span>
+    </div>
+    
+    <div class="main-container">
+        <!-- Collapsible Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <h3>🚀 Navigation</h3>
+            <div class="navigation-buttons">
+                <button class="nav-button" data-nav="chat" onclick="showChatView()">
+                    <i>💬</i> Chat Assistant
+                </button>
+                <button class="nav-button" data-nav="dashboard" onclick="showDashboard()">
+                    <i>📊</i> Analytics Dashboard
+                </button>
+            </div>
+            
+            <h3>💰 Session Cost</h3>
+            <div class="cost-display" id="costDisplay">
+                <h4>Current Session</h4>
+                <div class="cost-item">
+                    <span>Total Cost:</span>
+                    <span id="totalCost">$0.00</span>
+                </div>
+                <div class="cost-item">
+                    <span>Queries:</span>
+                    <span id="queryCount">0</span>
+                </div>
+                <div class="cost-item">
+                    <span>Avg per Query:</span>
+                    <span id="avgCost">$0.00</span>
+                </div>
+            </div>
+            
+            <h3>📖 Query History</h3>
+            <div class="history-panel" id="historyPanel">
+                <div style="text-align: center; color: #666; font-size: 0.9em;">
+                    No queries yet
+                </div>
+            </div>
+            
+            <button class="nav-button" onclick="clearHistory()" style="margin-top: 10px; font-size: 0.85em;">
+                <i>🗑️</i> Clear History
+            </button>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <!-- Core JavaScript -->
+    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

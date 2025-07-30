@@ -4,7 +4,6 @@ import logging
 import pandas as pd
 import os
 import json
-import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from .config import Config, get_store_mappings, get_shop_mappings, get_available_models
 from .api_clients import APIClient 
@@ -15,8 +14,6 @@ from .summarizer import generate_summary
 # Google Auth imports for IAP
 try:
     import google.auth
-    from google.auth.transport.requests import Request as GoogleAuthRequest
-    import aiohttp
     GOOGLE_AUTH_AVAILABLE = True
 except ImportError:
     GOOGLE_AUTH_AVAILABLE = False
@@ -71,12 +68,6 @@ class AuthenticatedToolboxClient(ToolboxSyncClient):
         except Exception as e:
             logger.error(f"Failed to initialize ToolboxSyncClient: {e}")
             self.toolbox_available = False
-    
-    def _get_auth_token(self) -> Optional[str]:
-        """No auth token needed"""
-        if not self.toolbox_available:
-            return None
-        return None
     
     async def _request(self, method: str, path: str, **kwargs):
         """Simple request without authentication"""
@@ -548,6 +539,7 @@ class SuperGeminiRetailChatbot:
                 'error': None,
                 'sql': f"[MCP Tool: {tool_name}]",
                 'results': results,
+                'results_data': results,  # Add this for table rendering
                 'row_count': len(df),
                 'has_data': True,
                 'query_id': query_id,

@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Super Gemini - Analytics Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            min-height: calc(100vh - 40px);
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e7ff;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 2.2em;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        .header p {
+            color: #666;
+            margin: 5px 0 0 0;
+            font-size: 1em;
+        }
+        
+        .nav-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .dashboard-content {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            min-height: 600px;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .metric-value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .chart-section {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .chart-placeholder {
+            height: 300px;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            border: 2px dashed #e0e7ff;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .refresh-button {
+            padding: 8px 16px;
+            background: #34d399;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .refresh-button:hover {
+            background: #10b981;
+            transform: scale(1.05);
+        }
+        
+        .refresh-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.8em;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .status-indicator.healthy { border-left: 4px solid #10b981; }
+        .status-indicator.unhealthy { border-left: 4px solid #ef4444; }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard-container {
+                padding: 20px;
+            }
+            
+            .chart-title {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Status Indicator -->
+    <div class="status-indicator" id="statusIndicator">
+        <span id="statusText">Checking...</span>
+    </div>
+    
+    <div class="dashboard-container">
+        <div class="header">
+            <div>
+                <h1>📊 Analytics Dashboard</h1>
+                <p>Real-time retail analytics powered by MCP Toolbox</p>
+            </div>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <div style="display: flex; gap: 10px;">
+                    <div style="display: flex; flex-direction: column;">
+                        <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Store #</label>
+                        <input type="number" id="storeNumber" placeholder="All" 
+                               style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 100px;">
+                    </div>
+                    <div style="display: flex; flex-direction: column;">
+                        <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Shop #</label>
+                        <input type="number" id="shopNumber" placeholder="All" 
+                               style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 100px;">
+                    </div>
+                    <button onclick="applyFilters()" style="padding: 10px 20px; background: #34d399; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 18px;">
+                        Apply
+                    </button>
+                </div>
+                <a href="/chat" class="nav-button">
+                    💬 Back to Chat
+                </a>
+            </div>
+        </div>
+        
+        <div class="dashboard-content">
+            <!-- Key Metrics Section -->
+            <div class="metrics-grid" id="metricsGrid">
+                <div class="metric-card">
+                    <div class="metric-value" id="totalRevenue">
+                        <span class="loading-spinner"></span>
+                    </div>
+                    <div class="metric-label">Total Revenue</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="totalOrders">
+                        <span class="loading-spinner"></span>
+                    </div>
+                    <div class="metric-label">Total Orders</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="avgOrderValue">
+                        <span class="loading-spinner"></span>
+                    </div>
+                    <div class="metric-label">Avg Order Value</div>
+                </div>
+                
+                <div class="metric-card">
+                    <div class="metric-value" id="returnRate">
+                        <span class="loading-spinner"></span>
+                    </div>
+                    <div class="metric-label">Return Rate</div>
+                </div>
+            </div>
+            
+            <!-- Sales Trend Chart -->
+            <div class="chart-section">
+                <div class="chart-title">
+                    <span>📈 Sales Trends (Last 30 Days)</span>
+                    <button class="refresh-button" onclick="refreshChart('salesTrend')" id="salesTrendRefresh">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div class="chart-placeholder" id="salesTrendChart">
+                    <div>
+                        <span class="loading-spinner"></span>
+                        <span style="margin-left: 10px;">Loading sales data...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Top Products Chart -->
+            <div class="chart-section">
+                <div class="chart-title">
+                    <span>🏆 Top Products by Sales Volume</span>
+                    <button class="refresh-button" onclick="refreshChart('topProducts')" id="topProductsRefresh">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div class="chart-placeholder" id="topProductsChart">
+                    <div>
+                        <span class="loading-spinner"></span>
+                        <span style="margin-left: 10px;">Loading product data...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Regional Performance Chart -->
+            <div class="chart-section">
+                <div class="chart-title">
+                    <span>🗺️ Regional Performance</span>
+                    <button class="refresh-button" onclick="refreshChart('regionalPerf')" id="regionalPerfRefresh">
+                        🔄 Refresh
+                    </button>
+                </div>
+                <div class="chart-placeholder" id="regionalPerfChart">
+                    <div>
+                        <span class="loading-spinner"></span>
+                        <span style="margin-left: 10px;">Loading regional data...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dashboard data and functionality
+        let dashboardData = {};
+        let refreshIntervals = {};
+        let currentStoreId = 0;
+        let currentShopId = 0;
+        
+        // Initialize dashboard on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+            loadDashboardData();
+            
+            // Refresh data every 5 minutes
+            setInterval(loadDashboardData, 5 * 60 * 1000);
+            
+            // Check system status every 30 seconds
+            setInterval(checkSystemStatus, 30000);
+            
+            // Handle enter key in input fields
+            document.getElementById('storeNumber').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') applyFilters();
+            });
+            document.getElementById('shopNumber').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') applyFilters();
+            });
+        });
+        
+        function applyFilters() {
+            const storeInput = document.getElementById('storeNumber');
+            const shopInput = document.getElementById('shopNumber');
+            
+            currentStoreId = parseInt(storeInput.value) || 0;
+            currentShopId = parseInt(shopInput.value) || 0;
+            
+            console.log(`Applying filters - Store: ${currentStoreId}, Shop: ${currentShopId}`);
+            
+            // Reload all data with new filters
+            loadDashboardData();
+        }
+        
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                
+                if (data.status === 'healthy' && data.mcp_toolbox_enabled) {
+                    indicator.className = 'status-indicator healthy';
+                    statusText.textContent = '✅ System Healthy';
+                } else {
+                    indicator.className = 'status-indicator unhealthy';
+                    statusText.textContent = '❌ System Issues';
+                }
+            } catch (error) {
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                indicator.className = 'status-indicator unhealthy';
+                statusText.textContent = '⚠️ Connection Error';
+            }
+        }
+        
+        async function loadDashboardData() {
+            try {
+                console.log('Loading dashboard data...');
+                
+                // Load key metrics
+                await loadKeyMetrics();
+                
+                // Load charts
+                await loadChart('salesTrend');
+                await loadChart('topProducts');
+                await loadChart('regionalPerf');
+                
+                console.log('Dashboard data loaded successfully');
+                
+            } catch (error) {
+                console.error('Error loading dashboard data:', error);
+                showError('Failed to load dashboard data: ' + error.message);
+            }
+        }
+        
+        async function loadKeyMetrics() {
+            try {
+                console.log('Loading key metrics...');
+                const params = new URLSearchParams();
+                if (currentStoreId) params.append('store_id', currentStoreId);
+                if (currentShopId) params.append('shop_id', currentShopId);
+                
+                const response = await fetch('/api/dashboard/metrics?' + params.toString());
+                const data = await response.json();
+                
+                if (data.success && data.metrics) {
+                    updateMetric('totalRevenue', formatCurrency(data.metrics.total_revenue));
+                    updateMetric('totalOrders', data.metrics.total_orders.toLocaleString());
+                    updateMetric('avgOrderValue', formatCurrency(data.metrics.avg_order_value));
+                    updateMetric('returnRate', data.metrics.return_rate.toFixed(1) + '%');
+                    console.log('Metrics updated successfully');
+                } else {
+                    throw new Error(data.error || 'Failed to load metrics');
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+                // Show placeholder data or error state
+                updateMetric('totalRevenue', '$--');
+                updateMetric('totalOrders', '--');
+                updateMetric('avgOrderValue', '$--');
+                updateMetric('returnRate', '--%');
+            }
+        }
+        
+        async function loadChart(chartType) {
+            const chartElement = document.getElementById(chartType + 'Chart');
+            
+            try {
+                console.log(`Loading ${chartType} chart...`);
+                const params = new URLSearchParams();
+                if (currentStoreId) params.append('store_id', currentStoreId);
+                if (currentShopId) params.append('shop_id', currentShopId);
+                
+                const response = await fetch(`/api/dashboard/chart/${chartType}?` + params.toString());
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.chart_html) {
+                    chartElement.innerHTML = data.chart_html;
+                    
+                    // Execute any scripts in the chart HTML
+                    const scripts = chartElement.getElementsByTagName('script');
+                    for (let script of scripts) {
+                        try {
+                            eval(script.innerHTML);
+                        } catch (scriptError) {
+                            console.error(`Script execution error in ${chartType}:`, scriptError);
+                        }
+                    }
+                    console.log(`${chartType} chart loaded successfully`);
+                } else {
+                    throw new Error(data.error || 'Chart generation failed');
+                }
+            } catch (error) {
+                console.error(`Error loading ${chartType} chart:`, error);
+                chartElement.innerHTML = `
+                    <div style="color: #ef4444; text-align: center; padding: 40px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                        <div>Failed to load chart</div>
+                        <div style="margin-top: 8px; font-size: 12px;">${error.message}</div>
+                        <button class="refresh-button" onclick="refreshChart('${chartType}')" style="margin-top: 16px;">
+                            🔄 Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        function updateMetric(metricId, value) {
+            const element = document.getElementById(metricId);
+            if (element) {
+                element.innerHTML = value;
+            }
+        }
+        
+        function formatCurrency(amount) {
+            if (amount === null || amount === undefined || isNaN(amount)) {
+                return '$0';
+            }
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount);
+        }
+        
+        async function refreshChart(chartType) {
+            const chartElement = document.getElementById(chartType + 'Chart');
+            const refreshButton = document.getElementById(chartType + 'Refresh');
+            
+            // Disable button and show loading
+            if (refreshButton) {
+                refreshButton.disabled = true;
+                refreshButton.innerHTML = '<span class="loading-spinner"></span> Refreshing...';
+            }
+            
+            chartElement.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <span class="loading-spinner"></span>
+                    <span style="margin-left: 10px;">Refreshing chart...</span>
+                </div>
+            `;
+            
+            try {
+                await loadChart(chartType);
+            } finally {
+                // Re-enable button
+                if (refreshButton) {
+                    refreshButton.disabled = false;
+                    refreshButton.innerHTML = '🔄 Refresh';
+                }
+            }
+        }
+        
+        function showError(message) {
+            console.error('Dashboard Error:', message);
+            
+            // You could implement a toast notification here
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = `
+                position: fixed; 
+                top: 80px; 
+                right: 20px; 
+                background: #fee2e2; 
+                color: #dc2626; 
+                padding: 12px 16px; 
+                border-radius: 8px; 
+                border-left: 4px solid #ef4444;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                z-index: 1001;
+                max-width: 300px;
+                font-size: 14px;
+            `;
+            errorDiv.textContent = message;
+            
+            document.body.appendChild(errorDiv);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.parentNode.removeChild(errorDiv);
+                }
+            }, 5000);
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                loadDashboardData();
+            }
+            
+            if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+                e.preventDefault();
+                window.location.href = '/';
+            }
+        });
+        
+        // Handle visibility change to refresh when tab becomes active
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                // Refresh data when user returns to tab
+                setTimeout(loadDashboardData, 1000);
+            }
+        });
+    </script>
+</body>
+</html>

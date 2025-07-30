@@ -1,7 +1,6 @@
 import os
 import logging
 import json
-import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from google.cloud import bigquery
