@@ -23,24 +23,84 @@
         
         .main-container {
             display: grid;
-            grid-template-columns: 300px 1fr;
+            grid-template-columns: 1fr;
             gap: 20px;
             height: calc(100vh - 40px);
+            position: relative;
         }
         
+        /* Collapsible Sidebar Styles */
         .sidebar {
+            position: fixed;
+            top: 20px;
+            right: -320px;
+            width: 300px;
+            height: calc(100vh - 40px);
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
-            border-radius: 20px;
+            border-radius: 20px 0 0 20px;
             padding: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            box-shadow: -10px 0 30px rgba(0,0,0,0.2);
             overflow-y: auto;
+            transition: right 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .sidebar.open {
+            right: 0;
+        }
+        
+        .sidebar-toggle {
+            position: fixed;
+            top: 30px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 1001;
+        }
+        
+        .sidebar-toggle:hover {
+            background: white;
+            transform: scale(1.1);
+        }
+        
+        .sidebar-toggle.open {
+            right: 320px;
+        }
+        
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 999;
+        }
+        
+        .sidebar-overlay.open {
+            opacity: 1;
+            visibility: visible;
         }
         
         .main-content {
             display: flex;
             flex-direction: column;
             gap: 20px;
+            margin-right: 0;
         }
         
         .container {
@@ -95,7 +155,7 @@
             z-index: 1;
         }
         
-        /* Sidebar Styles */
+        /* Sidebar Content Styles */
         .sidebar h3 {
             color: #333;
             margin-bottom: 15px;
@@ -220,7 +280,7 @@
             white-space: nowrap;
         }
         
-        /* FIXED DROPDOWN STYLES */
+        /* Clean dropdown styles */
         select {
             padding: 12px 14px;
             border: 2px solid #e0e7ff;
@@ -232,7 +292,6 @@
             min-width: 250px;
             color: #374151;
             font-weight: 500;
-            /* Remove custom styling that can interfere */
             appearance: menulist;
             -webkit-appearance: menulist;
             -moz-appearance: menulist;
@@ -244,7 +303,6 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        /* Ensure optgroup and options are visible */
         select optgroup {
             font-weight: bold;
             color: #374151;
@@ -261,41 +319,9 @@
             font-weight: normal;
         }
         
-        /* Ensure dropdown opens properly */
-        select:focus optgroup,
-        select:focus option {
-            background: white;
-            color: #374151;
-        }
-        
         select option:checked {
             background: #667eea;
             color: white;
-        }
-        
-        .advanced-options {
-            display: flex;
-            gap: 15px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .checkbox-group input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        
-        .checkbox-group label {
-            font-size: 0.9em;
-            color: #333;
-            cursor: pointer;
         }
         
         .input-container {
@@ -486,6 +512,81 @@
             margin: 0 0 15px 0;
         }
         
+        .sortable-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .sortable-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .sortable-table th:hover {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+        }
+        
+        .sortable-table th.sortable::after {
+            content: "↕️";
+            position: absolute;
+            right: 4px;
+            opacity: 0.7;
+            font-size: 10px;
+        }
+        
+        .sortable-table th.sort-asc::after {
+            content: "▲";
+            opacity: 1;
+        }
+        
+        .sortable-table th.sort-desc::after {
+            content: "▼";
+            opacity: 1;
+        }
+        
+        .sortable-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 13px;
+        }
+        
+        .sortable-table tr:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .sortable-table tr:nth-child(even) {
+            background: rgba(248, 250, 252, 0.5);
+        }
+        
+        .sortable-table .currency {
+            text-align: right;
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        .sortable-table .percentage {
+            text-align: right;
+            color: #dc2626;
+            font-weight: 600;
+        }
+        
+        .sortable-table .units {
+            text-align: right;
+            color: #374151;
+        }
+        
         .sql-box { 
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
             color: #e2e8f0;
@@ -540,14 +641,19 @@
         /* Health status indicator */
         .health-indicator {
             position: fixed;
-            top: 20px;
+            top: 90px;
             right: 20px;
             background: rgba(255, 255, 255, 0.9);
             border-radius: 8px;
             padding: 8px 12px;
             font-size: 0.8em;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            z-index: 1000;
+            z-index: 998;
+            transition: right 0.3s ease;
+        }
+        
+        .health-indicator.sidebar-open {
+            right: 340px;
         }
         
         .health-indicator.healthy { border-left: 4px solid #10b981; }
@@ -576,22 +682,6 @@
         }
         
         /* Responsive design */
-        @media (max-width: 1200px) {
-            .main-container {
-                grid-template-columns: 1fr;
-                gap: 20px;
-            }
-            
-            .sidebar {
-                order: 2;
-                max-height: 300px;
-            }
-            
-            .main-content {
-                order: 1;
-            }
-        }
-        
         @media (max-width: 768px) {
             body {
                 padding: 10px;
@@ -610,21 +700,38 @@
                 flex-direction: column;
             }
             
-            .advanced-options {
-                flex-direction: column;
-                align-items: flex-start;
+            .sidebar {
+                width: 280px;
+                right: -300px;
+            }
+            
+            .sidebar-toggle.open {
+                right: 280px;
+            }
+            
+            .health-indicator.sidebar-open {
+                right: 300px;
             }
         }
     </style>
 </head>
 <body>
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+        📊
+    </button>
+    
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+    
+    <!-- Health Indicator -->
     <div class="health-indicator" id="healthIndicator">
         <span id="healthStatus">Checking...</span>
     </div>
     
     <div class="main-container">
-        <!-- Sidebar -->
-        <div class="sidebar">
+        <!-- Collapsible Sidebar -->
+        <div class="sidebar" id="sidebar">
             <h3>🚀 Navigation</h3>
             <div class="navigation-buttons">
                 <button class="nav-button active" onclick="showChatView()">
@@ -668,7 +775,7 @@
         <div class="main-content">
             <div class="header">
                 <h1>🤖 Super Gemini Analytics Assistant</h1>
-                <p>Multi-model AI for retail analytics, inventory optimization, and returns analysis</p>
+                <p>MCP-powered AI for retail analytics, inventory optimization, and returns analysis</p>
             </div>
             
             <div id="chatView" class="container" style="flex: 1; display: flex; flex-direction: column;">
@@ -680,21 +787,6 @@
                                 <option value="">Loading models...</option>
                             </select>
                         </div>
-                        
-                        <div class="advanced-options">
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="enableWebSearch">
-                                <label for="enableWebSearch">🌐 Web Search</label>
-                            </div>
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="enableCodeExecution">
-                                <label for="enableCodeExecution">🐍 Code Analysis</label>
-                            </div>
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="enableWeighting" checked>
-                                <label for="enableWeighting">⚖️ Inventory Weighting</label>
-                            </div>
-                        </div>
                     </div>
                     
                     <div class="input-container">
@@ -704,7 +796,6 @@
                     
                     <div class="action-buttons">
                         <button onclick="submitQuery()" id="submitButton">🚀 Submit Query</button>
-                        <button onclick="submitAdvancedQuery()" id="advancedButton" class="secondary-button">⚡ Advanced Query</button>
                         <button onclick="showExportDialog()" id="exportButton" class="tertiary-button" disabled>📥 Export Data</button>
                     </div>
                 </div>
@@ -744,6 +835,31 @@
         let availableModels = {};
         let currentCostInfo = { total_session_cost: 0, queries_executed: 0, average_cost_per_query: 0 };
         
+        // Sidebar functionality
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const overlay = document.getElementById('sidebarOverlay');
+            const healthIndicator = document.getElementById('healthIndicator');
+            
+            sidebar.classList.toggle('open');
+            toggle.classList.toggle('open');
+            overlay.classList.toggle('open');
+            healthIndicator.classList.toggle('sidebar-open');
+        }
+        
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggle = document.getElementById('sidebarToggle');
+            const overlay = document.getElementById('sidebarOverlay');
+            const healthIndicator = document.getElementById('healthIndicator');
+            
+            sidebar.classList.remove('open');
+            toggle.classList.remove('open');
+            overlay.classList.remove('open');
+            healthIndicator.classList.remove('sidebar-open');
+        }
+        
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
             loadModels();
@@ -765,16 +881,13 @@
         
         // Enhanced escapeHtml function with robust data handling
         function escapeHtml(unsafe) {
-            // Add type checking and graceful handling
             if (typeof unsafe !== 'string') {
                 if (unsafe === null || unsafe === undefined) {
                     return '';
                 }
                 
-                // If it's an array or object, convert to formatted string
                 try {
                     if (Array.isArray(unsafe)) {
-                        // If it's an array of objects (table data), format as table
                         if (unsafe.length > 0 && typeof unsafe[0] === 'object') {
                             return formatArrayAsTable(unsafe);
                         }
@@ -803,10 +916,7 @@
                 return 'No data';
             }
             
-            // Get headers from first object
             const headers = Object.keys(data[0]);
-            
-            // Calculate column widths
             const colWidths = {};
             headers.forEach(header => {
                 colWidths[header] = Math.max(
@@ -815,11 +925,9 @@
                 );
             });
             
-            // Create header row
             let table = headers.map(h => h.padEnd(colWidths[h])).join(' | ') + '\n';
             table += headers.map(h => '-'.repeat(colWidths[h])).join('-|-') + '\n';
             
-            // Add data rows (limit to first 20 for display)
             data.slice(0, 20).forEach(row => {
                 table += headers.map(h => String(row[h] || '').padEnd(colWidths[h])).join(' | ') + '\n';
             });
@@ -834,7 +942,6 @@
         function buildResponseContent(data, modelName) {
             let content = '';
             
-            // Add results header with row count
             if (data.has_data && data.row_count > 0) {
                 content += `<div class="results-header">
                     <span><strong>Query Results</strong></span>
@@ -845,24 +952,20 @@
             content += '<strong>Results:</strong><br/>';
             content += `<small style="color: #666;">Generated by ${modelName}</small>`;
             
-            // Add execution time
             if (data.execution_times) {
                 content += `<small style="color: #666; margin-left: 10px;">Total time: ${data.execution_times.total_ms}ms</small>`;
                 
-                // Show summary generation time if available
                 if (data.execution_times.summary_generation_ms) {
                     content += `<small style="color: #666; margin-left: 10px;">(Summary: ${data.execution_times.summary_generation_ms}ms)</small>`;
                 }
             }
             
-            // Add cost info
             if (data.estimated_cost !== undefined) {
                 content += `<small style="color: #666; margin-left: 10px;">Cost: ${data.estimated_cost.toFixed(4)}</small>`;
             }
             
             content += '<br/>';
             
-            // Add MCP tool info if used
             if (data.toolbox_used && data.tool_name) {
                 content += '<div style="background: rgba(139, 92, 246, 0.1); padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
                 content += '<strong>🔧 MCP Tool Used:</strong><br/>';
@@ -873,7 +976,6 @@
                 content += '</div>';
             }
             
-            // AUTO-GENERATED SUMMARY DISPLAY
             if (data.auto_summary) {
                 content += '<div class="summary-box" style="margin: 20px 0;">';
                 content += '<h4>🤖 AI Insights (Auto-Generated)</h4>';
@@ -887,37 +989,35 @@
                 content += '</div>';
             }
             
-            // Handle results display - check if we have string or structured data
             let resultsToDisplay = '';
             
             if (typeof data.results === 'string') {
-                // Backend sent formatted string - use it directly
                 resultsToDisplay = data.results;
             } else if (data.results_data && Array.isArray(data.results_data)) {
-                // We have structured data - format it
                 resultsToDisplay = formatArrayAsTable(data.results_data);
             } else if (data.results) {
-                // Fallback - try to format whatever we got
                 resultsToDisplay = escapeHtml(data.results);
             } else {
                 resultsToDisplay = 'No results data received';
             }
             
-            content += '<div class="results-table">' + escapeHtml(resultsToDisplay) + '</div>';
+            // Check if we should render as sortable table
+            if (data.results_data && Array.isArray(data.results_data) && data.results_data.length > 0) {
+                content += '<div class="results-table">' + createSortableTable(data.results_data) + '</div>';
+            } else {
+                content += '<div class="results-table">' + escapeHtml(resultsToDisplay) + '</div>';
+            }
             
-            // Show truncation info
             if (data.has_data && data.row_count > 20) {
                 content += `<div style="color: #666; font-style: italic; margin-top: 10px; text-align: center;">`;
                 content += `Showing first 20 rows of ${data.row_count.toLocaleString()} total results`;
                 content += `</div>`;
             }
             
-            // Add action buttons
             if (data.has_data) {
                 content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
                 content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
                 
-                // Only show manual summary button if auto-summary failed or wasn't generated
                 if (!data.auto_summary) {
                     content += `<button class="tertiary-button" onclick="generateSummary(${currentMessageId})">💡 Generate Summary</button>`;
                 } else {
@@ -930,7 +1030,6 @@
             content += `<div id="chart-${currentMessageId}" class="chart-container"></div>`;
             content += `<div id="summary-${currentMessageId}"></div>`;
             
-            // Show SQL/Tool info
             content += '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: #667eea; font-weight: 500;">🔧 Tool Information</summary>';
             if (data.sql) {
                 content += '<div class="sql-box">' + escapeHtml(data.sql) + '</div>';
@@ -972,6 +1071,180 @@
             return content;
         }
         
+        // Enhanced table formatting functions
+        function createSortableTable(data) {
+            if (!data || data.length === 0) return 'No data available';
+            
+            const headers = Object.keys(data[0]);
+            let html = '<table class="sortable-table" id="sortableTable">';
+            
+            // Create header
+            html += '<thead><tr>';
+            headers.forEach(header => {
+                const displayName = formatHeaderName(header);
+                const dataType = detectColumnType(data, header);
+                html += `<th class="sortable" data-column="${header}" data-type="${dataType}" onclick="sortTableData('${header}', '${dataType}')">${displayName}</th>`;
+            });
+            html += '</tr></thead>';
+            
+            // Create body
+            html += '<tbody id="sortableTableBody">';
+            data.forEach(row => {
+                html += '<tr>';
+                headers.forEach(header => {
+                    const value = row[header];
+                    const formattedValue = formatCellValue(value, header);
+                    const cellClass = getCellClass(header);
+                    html += `<td class="${cellClass}">${formattedValue}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            
+            // Store data for sorting
+            window.currentTableData = data;
+            window.currentSort = { column: null, direction: null };
+            
+            return html;
+        }
+        
+        function formatHeaderName(header) {
+            return header.replace(/_/g, ' ')
+                        .replace(/\b\w/g, l => l.toUpperCase())
+                        .replace(/Pct/g, '%')
+                        .replace(/Id/g, 'ID');
+        }
+        
+        function detectColumnType(data, column) {
+            const sample = data[0][column];
+            if (typeof sample === 'number') {
+                if (column.includes('pct') || column.includes('percent')) return 'percentage';
+                if (column.includes('cost') || column.includes('revenue') || column.includes('price')) return 'currency';
+                return 'number';
+            }
+            return 'text';
+        }
+        
+        function formatCellValue(value, column) {
+            if (value === null || value === undefined) return '';
+            
+            // Handle fractions like "60233/20"
+            if (typeof value === 'string' && value.includes('/')) {
+                try {
+                    const parts = value.split('/');
+                    if (parts.length === 2) {
+                        const numerator = parseFloat(parts[0]);
+                        const denominator = parseFloat(parts[1]);
+                        if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+                            value = numerator / denominator;
+                        }
+                    }
+                } catch (e) {
+                    // Keep original value if parsing fails
+                }
+            }
+            
+            if (column.includes('pct') || column.includes('percent')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    // If the number is small (like 0.21), assume it's already a decimal percentage
+                    const displayValue = num < 1 ? num * 100 : num;
+                    return `${displayValue.toFixed(1)}%`;
+                }
+            }
+            
+            if (column.includes('cost') || column.includes('revenue') || column.includes('price') || column.includes('margin')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    return `$${num.toLocaleString()}`;
+                }
+            }
+            
+            if (column.includes('units') || column.includes('count')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    return num.toLocaleString();
+                }
+            }
+            
+            return String(value);
+        }
+        
+        function getCellClass(column) {
+            if (column.includes('pct') || column.includes('percent')) return 'percentage';
+            if (column.includes('cost') || column.includes('revenue') || column.includes('price') || column.includes('margin')) return 'currency';
+            if (column.includes('units') || column.includes('count')) return 'units';
+            return '';
+        }
+        
+        function sortTableData(column, type) {
+            if (!window.currentTableData) return;
+            
+            let direction = 'asc';
+            if (window.currentSort.column === column) {
+                direction = window.currentSort.direction === 'asc' ? 'desc' : 'asc';
+            }
+            
+            window.currentSort = { column, direction };
+            
+            // Update header indicators
+            document.querySelectorAll('.sortable-table th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            
+            const activeHeader = document.querySelector(`[data-column="${column}"]`);
+            if (activeHeader) {
+                activeHeader.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+            
+            // Sort the data
+            window.currentTableData.sort((a, b) => {
+                let valueA = a[column];
+                let valueB = b[column];
+                
+                // Handle fractions
+                if (typeof valueA === 'string' && valueA.includes('/')) {
+                    const parts = valueA.split('/');
+                    valueA = parseFloat(parts[0]) / parseFloat(parts[1]);
+                }
+                if (typeof valueB === 'string' && valueB.includes('/')) {
+                    const parts = valueB.split('/');
+                    valueB = parseFloat(parts[0]) / parseFloat(parts[1]);
+                }
+                
+                if (type === 'number' || type === 'currency' || type === 'percentage') {
+                    valueA = parseFloat(valueA) || 0;
+                    valueB = parseFloat(valueB) || 0;
+                } else {
+                    valueA = String(valueA).toLowerCase();
+                    valueB = String(valueB).toLowerCase();
+                }
+                
+                let comparison = 0;
+                if (valueA > valueB) comparison = 1;
+                if (valueA < valueB) comparison = -1;
+                
+                return direction === 'desc' ? -comparison : comparison;
+            });
+            
+            // Re-render table body
+            const tbody = document.getElementById('sortableTableBody');
+            if (tbody) {
+                const headers = Object.keys(window.currentTableData[0]);
+                tbody.innerHTML = window.currentTableData.map(row => {
+                    let rowHtml = '<tr>';
+                    headers.forEach(header => {
+                        const value = row[header];
+                        const formattedValue = formatCellValue(value, header);
+                        const cellClass = getCellClass(header);
+                        rowHtml += `<td class="${cellClass}">${formattedValue}</td>`;
+                    });
+                    rowHtml += '</tr>';
+                    return rowHtml;
+                }).join('');
+            }
+        }
+        
         async function loadModels() {
             try {
                 const response = await fetch('/models');
@@ -983,7 +1256,6 @@
                     console.log('Models loaded successfully:', Object.keys(data.models));
                 } else {
                     console.error('Failed to load models:', data.error);
-                    // Show error in dropdown
                     const select = document.getElementById('modelSelect');
                     select.innerHTML = '<option value="">Error loading models</option>';
                 }
@@ -996,13 +1268,12 @@
         
         function populateModelSelect(models) {
             const select = document.getElementById('modelSelect');
-            select.innerHTML = ''; // Clear loading message
+            select.innerHTML = '';
             
             console.log('Populating dropdown with models:', models);
             
             const providers = {};
             
-            // Group models by provider
             Object.entries(models).forEach(([modelId, config]) => {
                 const provider = config.provider || 'unknown';
                 if (!providers[provider]) {
@@ -1013,7 +1284,6 @@
             
             console.log('Grouped by providers:', providers);
             
-            // Create optgroups
             Object.entries(providers).forEach(([provider, modelList]) => {
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = getProviderDisplayName(provider);
@@ -1031,16 +1301,21 @@
                 select.appendChild(optgroup);
             });
             
-            // Set default selection to first available model
-            if (select.options.length > 0) {
+            // Set default to claude-sonnet-4-20250514
+            const defaultModel = 'claude-sonnet-4-20250514';
+            if (models[defaultModel]) {
+                select.value = defaultModel;
+                console.log('Set default model to:', defaultModel);
+            } else if (select.options.length > 0) {
+                // Fallback to first available model if default not found
                 const firstModel = Object.keys(models)[0];
                 select.value = firstModel;
-                console.log('Set default model to:', firstModel);
+                console.log('Default model not found, using:', firstModel);
             }
             
             // Force a repaint to ensure dropdown is visible
             select.style.display = 'none';
-            select.offsetHeight; // Trigger reflow
+            select.offsetHeight;
             select.style.display = '';
         }
         
@@ -1074,7 +1349,6 @@
             });
             
             input.addEventListener('blur', function() {
-                // Delay hiding to allow clicking on suggestions
                 setTimeout(() => {
                     dropdown.style.display = 'none';
                 }, 200);
@@ -1245,7 +1519,6 @@
             document.getElementById('chatView').style.display = 'flex';
             document.getElementById('dashboardView').style.display = 'none';
             
-            // Update navigation buttons
             document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
         }
@@ -1254,7 +1527,6 @@
             document.getElementById('chatView').style.display = 'none';
             document.getElementById('dashboardView').style.display = 'block';
             
-            // Update navigation buttons
             document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
         }
@@ -1263,54 +1535,35 @@
             executeQuery('/chat', false);
         }
         
-        function submitAdvancedQuery() {
-            executeQuery('/chat', true);
-        }
-        
         async function executeQuery(endpoint, isAdvanced) {
             const input = document.getElementById('queryInput');
             const submitBtn = document.getElementById('submitButton');
-            const advancedBtn = document.getElementById('advancedButton');
             const query = input.value.trim();
             
             if (!query) return;
             
             const selectedModel = document.getElementById('modelSelect').value;
-            const enableWebSearch = document.getElementById('enableWebSearch').checked;
-            const enableCodeExecution = document.getElementById('enableCodeExecution').checked;
-            const enableWeighting = document.getElementById('enableWeighting').checked;
             
             console.log('Submitting query with model:', selectedModel);
             
-            // Validate model selection
             if (!selectedModel) {
                 addMessage('error', 'Please select an AI model from the dropdown.');
                 return;
             }
             
-            // Disable buttons during processing
             submitBtn.disabled = true;
-            advancedBtn.disabled = true;
             
-            // Add user message to chat
             addMessage('user', query);
             input.value = '';
             
-            // Show loading
             document.getElementById('loadingModel').textContent = selectedModel;
             document.getElementById('loading').style.display = 'block';
             
             try {
                 const requestBody = {
                     query: query,
-                    model: selectedModel,
-                    apply_weighting: enableWeighting
+                    model: selectedModel
                 };
-                
-                if (isAdvanced) {
-                    requestBody.enable_web_search = enableWebSearch;
-                    requestBody.enable_code_execution = enableCodeExecution;
-                }
                 
                 console.log('Sending request:', requestBody);
                 
@@ -1324,7 +1577,6 @@
                 });
                 
                 console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1341,17 +1593,14 @@
                 
                 document.getElementById('loading').style.display = 'none';
                 submitBtn.disabled = false;
-                advancedBtn.disabled = false;
                 
                 if (data.success) {
                     currentMessageId = Date.now();
                     let responseContent = buildResponseContent(data, selectedModel);
                     addMessage('assistant', responseContent, currentMessageId);
                     
-                    // Enable export if we have data
                     document.getElementById('exportButton').disabled = !data.has_data;
                     
-                    // Update cost and history
                     updateCostInfo();
                     loadHistory();
                     hasSubmittedQuery = true;
@@ -1364,9 +1613,7 @@
                 
                 document.getElementById('loading').style.display = 'none';
                 submitBtn.disabled = false;
-                advancedBtn.disabled = false;
                 
-                // Enhanced error message with debugging info
                 let errorMessage = 'Connection error: ' + error.message;
                 
                 if (error.message.includes('Failed to fetch')) {
@@ -1383,7 +1630,6 @@
             }
         }
         
-        // Add diagnostic function
         async function runDiagnostics() {
             console.log('Running diagnostics...');
             
@@ -1421,12 +1667,11 @@
             chartDiv.innerHTML = '<div class="loading" style="display: block;"><div class="spinner"></div><p>Generating chart...</p></div>';
             
             try {
-                // Send request to generate chart
                 const response = await fetch('/generate_chart', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        chart_type: 'auto' // Let the backend decide
+                        chart_type: 'auto'
                     })
                 });
                 
@@ -1435,7 +1680,6 @@
                 if (data.success && data.chart) {
                     chartDiv.innerHTML = data.chart;
                     
-                    // Execute any scripts in the chart HTML
                     const scripts = chartDiv.getElementsByTagName('script');
                     for (let i = 0; i < scripts.length; i++) {
                         const oldScript = scripts[i];
@@ -1485,7 +1729,6 @@
             }
         }
 
-        // Add this new function for regenerating summaries
         async function regenerateSummary(messageId) {
             const summaryDiv = document.getElementById('summary-' + messageId);
             const selectedModel = document.getElementById('modelSelect').value;
@@ -1536,7 +1779,6 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    // Create and download file
                     const blob = new Blob([data.data], { type: data.mime_type });
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1570,51 +1812,42 @@
                 messageDiv.innerHTML = content;
             }
             
-            // Fade in effect
             messageDiv.style.opacity = '0';
             chatHistory.insertBefore(messageDiv, chatHistory.firstChild);
             setTimeout(() => {
                 messageDiv.style.opacity = '1';
             }, 10);
             
-            // Scroll to top to see new message
             chatHistory.scrollTop = 0;
         }
         
         // Enter key support
         document.getElementById('queryInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                if (e.shiftKey) {
-                    submitAdvancedQuery();
-                } else {
-                    submitQuery();
-                }
+                submitQuery();
             }
         });
         
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
-            // Ctrl/Cmd + K to focus query input
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
                 document.getElementById('queryInput').focus();
             }
             
-            // Ctrl/Cmd + D to show dashboard
             if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                 e.preventDefault();
                 showDashboard();
             }
             
-            // Ctrl/Cmd + H to show chat
             if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
                 e.preventDefault();
                 showChatView();
             }
             
-            // Escape to close export dialog
             if (e.key === 'Escape') {
                 closeExportDialog();
+                closeSidebar();
             }
         });
         
@@ -1640,17 +1873,10 @@
             localStorage.removeItem('queryDraft');
         }
         
-        // Update submit functions to clear draft
         const originalSubmitQuery = submitQuery;
         submitQuery = function() {
             clearQueryDraft();
             originalSubmitQuery();
-        };
-        
-        const originalSubmitAdvancedQuery = submitAdvancedQuery;
-        submitAdvancedQuery = function() {
-            clearQueryDraft();
-            originalSubmitAdvancedQuery();
         };
     </script>
 </body>

@@ -4,20 +4,13 @@ import logging
 import pandas as pd
 import os
 import json
+import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from .config import Config, get_store_mappings, get_shop_mappings, get_available_models
 from .api_clients import APIClient 
 from .bigquery_utils import BigQueryUtils
 from .visualizer import create_visualization
 from .summarizer import generate_summary
-
-# MCP Toolbox Integration
-try:
-    from toolbox_core import ToolboxSyncClient
-    TOOLBOX_AVAILABLE = True
-except ImportError:
-    TOOLBOX_AVAILABLE = False
-    logging.error("MCP Toolbox not available. This system requires MCP Toolbox to function.")
 
 # Google Auth imports for IAP
 try:
@@ -31,23 +24,65 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# MCP Toolbox Integration - Single import attempt
+try:
+    # Try the actual import path first
+    from toolbox_core import ToolboxSyncClient
+    TOOLBOX_AVAILABLE = True
+    logger.info("✅ ToolboxSyncClient imported successfully from toolbox_core")
+except ImportError:
+    try:
+        # Fallback to alternative import path
+        from mcp_toolbox import ToolboxSyncClient
+        TOOLBOX_AVAILABLE = True
+        logger.info("✅ ToolboxSyncClient imported successfully from mcp_toolbox")
+    except ImportError as e:
+        logger.warning(f"⚠️ ToolboxSyncClient not available: {e}")
+        TOOLBOX_AVAILABLE = False
+        
+        # Create a dummy base class when MCP Toolbox isn't available
+        class ToolboxSyncClient:
+            def __init__(self, base_url: str):
+                self.base_url = base_url
+                logger.warning("Using dummy ToolboxSyncClient - MCP Toolbox not available")
+            
+            async def _request(self, method: str, path: str, **kwargs):
+                raise NotImplementedError("MCP Toolbox not available")
+
 # Working Toolbox Client - No authentication needed
 class AuthenticatedToolboxClient(ToolboxSyncClient):
     """Extended ToolboxSyncClient - no auth needed since Cloud Run allows unauthenticated access"""
     
     def __init__(self, base_url: str):
-        super().__init__(base_url)
+        self.toolbox_available = TOOLBOX_AVAILABLE
         
-        # No authentication needed since we configured Cloud Run to allow unauthenticated access
-        self.use_auth = False
-        logger.info("Using unauthenticated access (Cloud Run configured for allUsers)")
+        if not TOOLBOX_AVAILABLE:
+            logger.error("Cannot initialize AuthenticatedToolboxClient - ToolboxSyncClient not available")
+            super().__init__(base_url)  # Initialize dummy base class
+            return
+        
+        try:
+            super().__init__(base_url)
+            
+            # No authentication needed since we configured Cloud Run to allow unauthenticated access
+            self.use_auth = False
+            logger.info("✅ Using unauthenticated access (Cloud Run configured for allUsers)")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize ToolboxSyncClient: {e}")
+            self.toolbox_available = False
     
     def _get_auth_token(self) -> Optional[str]:
         """No auth token needed"""
+        if not self.toolbox_available:
+            return None
         return None
     
     async def _request(self, method: str, path: str, **kwargs):
         """Simple request without authentication"""
+        if not self.toolbox_available:
+            raise RuntimeError("MCP Toolbox not available - cannot make requests")
+            
         logger.debug(f"Making unauthenticated request: {method} {path}")
         try:
             return await super()._request(method, path, **kwargs)
@@ -76,18 +111,28 @@ class SuperGeminiRetailChatbot:
         self.total_cost = 0.0
         self.query_costs = {}
         
-        # MCP Toolbox initialization - REQUIRED
+        # MCP Toolbox initialization - Make it optional for graceful degradation
         self.toolbox = None
         self.tools = {}
         self.toolbox_enabled = False
         
-        if not TOOLBOX_AVAILABLE:
-            raise RuntimeError("MCP Toolbox is required but not available. Please install toolbox_core.")
-        
-        self._initialize_toolbox()
+        if TOOLBOX_AVAILABLE:
+            try:
+                self._initialize_toolbox()
+                logger.info("✅ MCP Toolbox initialization successful")
+            except Exception as e:
+                logger.error(f"❌ MCP Toolbox initialization failed: {e}")
+                logger.warning("🔄 Continuing without MCP Toolbox - some features will be disabled")
+        else:
+            logger.warning("⚠️ MCP Toolbox not available - some features will be disabled")
+            logger.info("📝 To enable MCP features, install: pip install toolbox_core")
 
     def _initialize_toolbox(self):
         """Initialize MCP Toolbox client with authentication if on Cloud Run"""
+        if not TOOLBOX_AVAILABLE:
+            logger.warning("Cannot initialize toolbox - library not available")
+            return
+            
         try:
             # Your deployed Toolbox URL
             toolbox_url = os.getenv("TOOLBOX_URL", "https://toolbox-41815171183.us-central1.run.app")
@@ -142,15 +187,12 @@ class SuperGeminiRetailChatbot:
                 logger.info(f"Available tools: {list(self.tools.keys())}")
             else:
                 raise RuntimeError("No tools loaded from MCP Toolbox. Check your tools.yaml configuration.")
-            
+                
         except Exception as e:
             logger.error(f"Failed to initialize MCP Toolbox: {e}")
-            logger.error("This system requires MCP Toolbox to function. Please ensure:")
-            logger.error("1. MCP Toolbox server is running")
-            logger.error("2. tools.yaml is properly configured")
-            logger.error("3. toolbox_core package is installed")
-            logger.error("4. If using IAP, ensure service account has invoker permissions")
-            raise RuntimeError(f"MCP Toolbox initialization failed: {e}")
+            self.toolbox_enabled = False
+            self.tools = {}
+            raise  # Re-raise so the caller can handle it
 
     def _map_query_to_tool(self, query: str) -> Tuple[str, Dict[str, Any]]:
         """
@@ -402,7 +444,7 @@ class SuperGeminiRetailChatbot:
             result = tool(**parameters)
             execution_time = int((time.time() - start_time) * 1000)
             
-            # Process the result into DataFrame
+            # Process the result into DataFrame with smart formatting
             df = self._process_mcp_result(result, tool_name)
             
             if df is None or df.empty:
@@ -426,6 +468,15 @@ class SuperGeminiRetailChatbot:
             self.last_data = self.last_results
             
             execution_times['tool_execution_ms'] = execution_time
+
+            # Add this debug logging in your chat() method
+            logger.info(f"=== SUMMARY DEBUG ===")
+            logger.info(f"model_name parameter: {model_name}")
+            logger.info(f"config.model_name: {self.config.model_name}")
+            logger.info(f"final model for summary: {model_name or self.config.model_name}")
+            logger.info(f"available_models keys: {list(self.available_models.keys()) if self.available_models else 'None'}")
+            logger.info(f"DataFrame shape: {df.shape}")
+            logger.info(f"Query length: {len(user_query)}")
             
             # AUTO-GENERATE SUMMARY after successful MCP tool execution
             auto_summary = None
@@ -548,112 +599,340 @@ class SuperGeminiRetailChatbot:
             }
 
     def _process_mcp_result(self, result: Any, tool_name: str) -> Optional[pd.DataFrame]:
-        """Process the result from an MCP tool call into a DataFrame"""
+        """Enhanced MCP result processing with smart auto-formatting"""
         try:
             logger.info(f"Processing result from tool {tool_name}: type={type(result)}")
             
-            # Handle string results (JSON format)
-            if isinstance(result, str):
-                try:
-                    # Parse JSON string
-                    data = json.loads(result)
-                    if isinstance(data, list):
-                        df = pd.DataFrame(data)
-                        logger.info(f"Created DataFrame from JSON string with shape: {df.shape}")
-                        
-                        # Convert numeric strings to proper types
-                        for col in df.columns:
-                            if col in ['total_units', 'total_cost', 'transaction_count', 'unique_skus', 'unique_customers', 'store_id', 'shop_id']:
-                                try:
-                                    df[col] = pd.to_numeric(df[col])
-                                except:
-                                    pass
-                            elif col in ['total_revenue', 'total_margin', 'margin_pct', 'avg_transaction_value', 'retail_value', 'current_on_hand']:
-                                try:
-                                    # Handle fraction strings like "98833/25"
-                                    df[col] = df[col].apply(lambda x: eval(x) if isinstance(x, str) and '/' in x else float(x))
-                                except:
-                                    pass
-                            elif col in ['sale_date', 'snapshot_date']:
-                                try:
-                                    df[col] = pd.to_datetime(df[col])
-                                except:
-                                    pass
-                        
-                        return df
-                    else:
-                        df = pd.DataFrame([data])
-                        logger.info(f"Created single-row DataFrame from JSON object")
-                        return df
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to parse JSON string result")
-                    return None
+            # First convert to DataFrame using existing logic
+            df = self._convert_raw_result_to_dataframe(result, tool_name)
             
-            elif isinstance(result, pd.DataFrame):
-                logger.info(f"Result is already a DataFrame with shape: {result.shape}")
-                return result
+            if df is None or df.empty:
+                return df
             
-            elif isinstance(result, dict):
-                if 'data' in result:
-                    data = result['data']
-                    if isinstance(data, list):
-                        df = pd.DataFrame(data)
-                        logger.info(f"Created DataFrame from data list with shape: {df.shape}")
-                        return df
-                elif 'rows' in result:
-                    df = pd.DataFrame(result['rows'])
-                    logger.info(f"Created DataFrame from rows with shape: {df.shape}")
-                    return df
-                else:
-                    # Try to convert the entire dict to DataFrame
-                    if all(isinstance(v, list) for v in result.values()):
-                        df = pd.DataFrame(result)
-                        logger.info(f"Created DataFrame from columnar dict with shape: {df.shape}")
-                        return df
-                    else:
-                        df = pd.DataFrame([result])
-                        logger.info(f"Created single-row DataFrame with shape: {df.shape}")
-                        return df
+            # Apply smart auto-formatting
+            formatted_df = self._apply_smart_formatting(df, tool_name)
             
-            elif isinstance(result, list):
-                logger.info(f"Result is a list with {len(result)} items")
-                if result:
-                    if isinstance(result[0], dict):
-                        df = pd.DataFrame(result)
-                        logger.info(f"Created DataFrame from list of dicts with shape: {df.shape}")
-                        return df
-                    else:
-                        df = pd.DataFrame({'value': result})
-                        logger.info(f"Created single-column DataFrame with shape: {df.shape}")
-                        return df
-                else:
-                    logger.warning("Empty list result")
-                    return pd.DataFrame()
+            return formatted_df
             
-            else:
-                logger.error(f"Unsupported result type: {type(result)}")
-                return None
-                
         except Exception as e:
             logger.error(f"Failed to process MCP result: {str(e)}")
             return None
 
+    def _convert_raw_result_to_dataframe(self, result: Any, tool_name: str) -> Optional[pd.DataFrame]:
+        """Convert raw MCP result to DataFrame (existing logic)"""
+        # Handle string results (JSON format)
+        if isinstance(result, str):
+            try:
+                # Parse JSON string
+                data = json.loads(result)
+                if isinstance(data, list):
+                    df = pd.DataFrame(data)
+                    logger.info(f"Created DataFrame from JSON string with shape: {df.shape}")
+                    
+                    # Basic type conversion for numeric fields
+                    for col in df.columns:
+                        if col in ['total_units', 'total_cost', 'transaction_count', 'unique_skus', 'unique_customers', 'store_id', 'shop_id']:
+                            try:
+                                df[col] = pd.to_numeric(df[col])
+                            except:
+                                pass
+                        elif col in ['total_revenue', 'total_margin', 'margin_pct', 'avg_transaction_value', 'retail_value', 'current_on_hand']:
+                            try:
+                                # Handle fraction strings like "98833/25"
+                                df[col] = df[col].apply(lambda x: eval(x) if isinstance(x, str) and '/' in x else float(x))
+                            except:
+                                pass
+                        elif col in ['sale_date', 'snapshot_date']:
+                            try:
+                                df[col] = pd.to_datetime(df[col])
+                            except:
+                                pass
+                    
+                    return df
+                else:
+                    df = pd.DataFrame([data])
+                    logger.info(f"Created single-row DataFrame from JSON object")
+                    return df
+            except json.JSONDecodeError:
+                logger.error(f"Failed to parse JSON string result")
+                return None
+        
+        elif isinstance(result, pd.DataFrame):
+            logger.info(f"Result is already a DataFrame with shape: {result.shape}")
+            return result
+        
+        elif isinstance(result, dict):
+            if 'data' in result:
+                data = result['data']
+                if isinstance(data, list):
+                    df = pd.DataFrame(data)
+                    logger.info(f"Created DataFrame from data list with shape: {df.shape}")
+                    return df
+            elif 'rows' in result:
+                df = pd.DataFrame(result['rows'])
+                logger.info(f"Created DataFrame from rows with shape: {df.shape}")
+                return df
+            else:
+                # Try to convert the entire dict to DataFrame
+                if all(isinstance(v, list) for v in result.values()):
+                    df = pd.DataFrame(result)
+                    logger.info(f"Created DataFrame from columnar dict with shape: {df.shape}")
+                    return df
+                else:
+                    df = pd.DataFrame([result])
+                    logger.info(f"Created single-row DataFrame with shape: {df.shape}")
+                    return df
+        
+        elif isinstance(result, list):
+            logger.info(f"Result is a list with {len(result)} items")
+            if result:
+                if isinstance(result[0], dict):
+                    df = pd.DataFrame(result)
+                    logger.info(f"Created DataFrame from list of dicts with shape: {df.shape}")
+                    return df
+                else:
+                    df = pd.DataFrame({'value': result})
+                    logger.info(f"Created single-column DataFrame with shape: {df.shape}")
+                    return df
+            else:
+                logger.warning("Empty list result")
+                return pd.DataFrame()
+        
+        else:
+            logger.error(f"Unsupported result type: {type(result)}")
+            return None
+
+    def _apply_smart_formatting(self, df: pd.DataFrame, tool_name: str) -> pd.DataFrame:
+        """
+        Apply intelligent auto-formatting based on data types and business rules.
+        Optimized for both user display and LLM consumption.
+        """
+        
+        formatted_df = df.copy()
+        
+        # 1. CURRENCY FIELDS - Auto-detect and format
+        currency_fields = self._detect_currency_columns(formatted_df)
+        for col in currency_fields:
+            formatted_df[col] = self._format_currency_column(formatted_df[col])
+        
+        # 2. PERCENTAGE FIELDS - Auto-detect and format  
+        percentage_fields = self._detect_percentage_columns(formatted_df)
+        for col in percentage_fields:
+            formatted_df[col] = self._format_percentage_column(formatted_df[col])
+        
+        # 3. INTEGER FIELDS - Auto-detect and format
+        integer_fields = self._detect_integer_columns(formatted_df)
+        for col in integer_fields:
+            formatted_df[col] = self._format_integer_column(formatted_df[col])
+        
+        # 4. BUSINESS LOGIC FILTERING - Tool-specific intelligent filtering
+        formatted_df = self._apply_business_rules(formatted_df, tool_name)
+        
+        # 5. INTELLIGENT SORTING - Sort by most relevant column
+        formatted_df = self._apply_smart_sorting(formatted_df, tool_name)
+        
+        # 6. COLUMN OPTIMIZATION - Reorder for readability
+        formatted_df = self._optimize_column_order(formatted_df)
+        
+        logger.info(f"Applied smart formatting: {len(formatted_df)} rows, {len(formatted_df.columns)} columns")
+        return formatted_df
+
+    def _detect_currency_columns(self, df: pd.DataFrame) -> List[str]:
+        """Auto-detect currency columns based on name patterns and data"""
+        currency_patterns = [
+            'revenue', 'sales', 'cost', 'margin', 'price', 'value', 
+            'total_revenue', 'total_sales', 'total_cost', 'total_margin',
+            'avg_transaction_value', 'retail_value', 'unit_price'
+        ]
+        
+        currency_cols = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(pattern in col_lower for pattern in currency_patterns):
+                # Verify it's actually numeric
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    currency_cols.append(col)
+        
+        return currency_cols
+
+    def _detect_percentage_columns(self, df: pd.DataFrame) -> List[str]:
+        """Auto-detect percentage columns"""
+        percentage_patterns = ['pct', 'percent', 'rate', 'margin_pct']
+        
+        percentage_cols = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(pattern in col_lower for pattern in percentage_patterns):
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    percentage_cols.append(col)
+        
+        return percentage_cols
+
+    def _detect_integer_columns(self, df: pd.DataFrame) -> List[str]:
+        """Auto-detect integer columns (units, counts, IDs)"""
+        integer_patterns = [
+            'units', 'quantity', 'count', 'on_hand', 'inventory',
+            'total_units', 'current_on_hand', 'transaction_count',
+            'unique_skus', 'unique_customers', 'days_supply'
+        ]
+        
+        integer_cols = []
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(pattern in col_lower for pattern in integer_patterns):
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    integer_cols.append(col)
+        
+        return integer_cols
+
+    def _format_currency_column(self, series: pd.Series) -> pd.Series:
+        """Format currency column for optimal display and LLM readability"""
+        # Convert to numeric, handle errors gracefully
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        # Round to whole dollars (no cents for retail analytics)
+        rounded_series = numeric_series.round(0)
+        
+        # Format with $ and commas, but keep as string for display
+        # LLM can easily parse "$1,234" format
+        formatted_series = rounded_series.apply(
+            lambda x: f"${x:,.0f}" if pd.notna(x) and x >= 0 else "$0"
+        )
+        
+        return formatted_series
+
+    def _format_percentage_column(self, series: pd.Series) -> pd.Series:
+        """Format percentage column for optimal display and LLM readability"""
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        # Determine if values are already in percentage form (0-100) or decimal form (0-1)
+        max_val = numeric_series.max()
+        if max_val <= 1.0:
+            # Values are in decimal form, convert to percentage
+            numeric_series = numeric_series * 100
+        
+        # Round to 1 decimal place for margins, whole numbers for rates
+        rounded_series = numeric_series.round(1)
+        
+        # Format with % symbol - LLM understands "23.5%" format well
+        formatted_series = rounded_series.apply(
+            lambda x: f"{x:.1f}%" if pd.notna(x) else "0.0%"
+        )
+        
+        return formatted_series
+
+    def _format_integer_column(self, series: pd.Series) -> pd.Series:
+        """Format integer column for optimal display and LLM readability"""
+        numeric_series = pd.to_numeric(series, errors='coerce')
+        
+        # Round to whole numbers
+        integer_series = numeric_series.round(0)
+        
+        # Add thousand separators for large numbers
+        # LLM handles "1,234" format very well
+        formatted_series = integer_series.apply(
+            lambda x: f"{int(x):,}" if pd.notna(x) and x >= 0 else "0"
+        )
+        
+        return formatted_series
+
+    def _apply_business_rules(self, df: pd.DataFrame, tool_name: str) -> pd.DataFrame:
+        """Apply intelligent business rules based on tool type"""
+        
+        if 'top_margin' in tool_name and 'margin_pct' in df.columns:
+            # Only show items with meaningful margins (>5%)
+            margin_numeric = pd.to_numeric(df['margin_pct'].str.replace('%', ''), errors='coerce')
+            df = df[margin_numeric > 5.0]
+            logger.info(f"Filtered to items with margin > 5%: {len(df)} items")
+        
+        elif 'out_of_stock' in tool_name and 'total_revenue' in df.columns:
+            # Focus on high-impact out of stock items (revenue > $100)
+            revenue_numeric = pd.to_numeric(df['total_revenue'].str.replace('[$,]', '', regex=True), errors='coerce')
+            df = df[revenue_numeric > 100]
+            logger.info(f"Filtered to high-impact out of stock items: {len(df)} items")
+        
+        elif 'overstock' in tool_name and 'days_supply' in df.columns:
+            # Focus on true overstock (>60 days supply)
+            days_numeric = pd.to_numeric(df['days_supply'].str.replace(',', ''), errors='coerce')
+            df = df[days_numeric > 60]
+            logger.info(f"Filtered to true overstock items (>60 days): {len(df)} items")
+        
+        # General rule: Limit to top 50 results for LLM processing efficiency
+        if len(df) > 50:
+            df = df.head(50)
+            logger.info(f"Limited to top 50 results for optimal LLM processing")
+        
+        return df
+
+    def _apply_smart_sorting(self, df: pd.DataFrame, tool_name: str) -> pd.DataFrame:
+        """Apply intelligent sorting based on tool purpose"""
+        
+        if 'top_selling' in tool_name or 'revenue' in tool_name:
+            # Sort by revenue descending
+            if 'total_revenue' in df.columns:
+                revenue_numeric = pd.to_numeric(df['total_revenue'].str.replace('[$,]', '', regex=True), errors='coerce')
+                df = df.iloc[revenue_numeric.argsort()[::-1]]
+        
+        elif 'margin' in tool_name:
+            # Sort by margin percentage descending
+            if 'margin_pct' in df.columns:
+                margin_numeric = pd.to_numeric(df['margin_pct'].str.replace('%', ''), errors='coerce')
+                df = df.iloc[margin_numeric.argsort()[::-1]]
+        
+        elif 'out_of_stock' in tool_name:
+            # Sort by recent sales/revenue impact
+            if 'total_revenue' in df.columns:
+                revenue_numeric = pd.to_numeric(df['total_revenue'].str.replace('[$,]', '', regex=True), errors='coerce')
+                df = df.iloc[revenue_numeric.argsort()[::-1]]
+        
+        elif 'overstock' in tool_name:
+            # Sort by days supply descending (worst first)
+            if 'days_supply' in df.columns:
+                days_numeric = pd.to_numeric(df['days_supply'].str.replace(',', ''), errors='coerce')
+                df = df.iloc[days_numeric.argsort()[::-1]]
+        
+        return df
+
+    def _optimize_column_order(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Reorder columns for optimal readability (user) and LLM processing"""
+        
+        # Define priority order for common retail analytics columns
+        priority_columns = [
+            'product_name', 'sku', 'description', 'product_description',
+            'total_revenue', 'total_units', 'margin_pct', 'total_margin',
+            'current_on_hand', 'days_supply', 'avg_transaction_value',
+            'store_id', 'shop_id', 'sale_date', 'snapshot_date'
+        ]
+        
+        # Get existing columns in priority order
+        ordered_columns = []
+        for col in priority_columns:
+            if col in df.columns:
+                ordered_columns.append(col)
+        
+        # Add remaining columns
+        remaining_columns = [col for col in df.columns if col not in ordered_columns]
+        final_order = ordered_columns + remaining_columns
+        
+        return df[final_order]
+
     def _format_results(self, df: pd.DataFrame, preview_rows: int = None) -> List[Dict[str, Any]]:
-        """Format DataFrame results for API response - limit only display, not data retrieval"""
+        """
+        Enhanced results formatting that preserves formatted data for both display and LLM.
+        No additional formatting needed since data is already optimally formatted.
+        """
         if df is None or df.empty:
             return []
         
-        # UI display limit (not data retrieval limit)
         preview_rows = preview_rows or self.config.preview_rows or 20
         
-        # Log if we're truncating for display
         if len(df) > preview_rows:
             logger.info(f"Retrieved {len(df)} rows, displaying first {preview_rows} for UI")
         
-        # Convert DataFrame to list of dictionaries - only first N rows for UI
+        # Convert to records - data is already perfectly formatted
         results = df.head(preview_rows).to_dict('records')
         
-        # Clean up any NaN values
+        # Only handle null values and timestamps
         for row in results:
             for key, value in row.items():
                 if pd.isna(value):

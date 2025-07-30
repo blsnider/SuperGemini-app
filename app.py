@@ -381,15 +381,14 @@ def get_models() -> Dict[str, Any]:
         logger.error(f"Error getting models: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Add this enhanced error handling to your app.py chat endpoint
+# Updated chat endpoint for app.py with cleaned parameters
 
 @app.route('/chat', methods=['POST'])
 @limiter.limit("50 per minute") if limiter else lambda f: f
 @optional_auth
 def chat() -> Dict[str, Any]:
-    """Handle chat requests using ONLY MCP tools with enhanced debugging."""
+    """Handle chat requests using ONLY MCP tools with cleaned parameters."""
     
-    # Enhanced logging for debugging
     logger.info("=== CHAT ENDPOINT CALLED ===")
     
     if not chatbot:
@@ -423,8 +422,14 @@ def chat() -> Dict[str, Any]:
         data = request.json or {}
         logger.info(f"Request data: {data}")
         
+        # CLEANED: Only extract essential parameters
         query = data.get('query', '').strip()
-        model = data.get('model', config.model_name).lower()
+        model = data.get('model', config.model_name)
+        
+        # REMOVED: All the legacy parameters that don't do anything
+        # - enable_web_search (not implemented in MCP-only system)
+        # - enable_code_execution (not implemented in MCP-only system)  
+        # - apply_weighting (not implemented in MCP tools)
         
         user_id = getattr(g, 'user', {}).get('email') or 'anonymous'
         session_id = request.headers.get('X-Cloud-Trace-Context', 'default').split('/')[0]
@@ -502,7 +507,8 @@ def chat() -> Dict[str, Any]:
             'endpoint': '/chat',
             'model_used': model,
             'toolbox_enabled': chatbot.toolbox_enabled,
-            'available_tools': len(chatbot.tools) if hasattr(chatbot, 'tools') else 0
+            'available_tools': len(chatbot.tools) if hasattr(chatbot, 'tools') else 0,
+            'parameters_cleaned': True  # Indicate we removed legacy params
         }
         
         logger.info(f"Returning response: success={result.get('success')}")
@@ -519,7 +525,8 @@ def chat() -> Dict[str, Any]:
                 'error_type': type(e).__name__,
                 'endpoint': '/chat',
                 'has_chatbot': chatbot is not None,
-                'has_toolbox': hasattr(chatbot, 'toolbox') if chatbot else False
+                'has_toolbox': hasattr(chatbot, 'toolbox') if chatbot else False,
+                'parameters_cleaned': True
             },
             'suggestion': 'Check server logs for detailed error information'
         }), 500
@@ -1087,10 +1094,30 @@ def health() -> Dict[str, Any]:
             'system_mode': 'MCP-Only'
         }), 500
 
+@app.route('/debug/test_mcp_connection', methods=['GET'])
+def test_mcp_connection():
+    try:
+        import requests
+        toolbox_url = os.getenv('TOOLBOX_URL', 'https://toolbox-41815171183.us-central1.run.app')
+        response = requests.get(toolbox_url, timeout=10)
+        return jsonify({
+            'success': True,
+            'status_code': response.status_code,
+            'response_text': response.text[:200],
+            'url_tested': toolbox_url
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'url_tested': toolbox_url
+        })
+     
+# Move these OUTSIDE the if __name__ block
+port = int(os.getenv('PORT', 8080))
+debug = config.environment != 'production'
+
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 8080))
-    debug = config.environment != 'production'
-    
     logger.info(f"Starting MCP-Only Retail Analytics server on port {port}")
     logger.info(f"Environment: {config.environment}")
     logger.info(f"Debug mode: {debug}")
@@ -1100,8 +1127,7 @@ if __name__ == '__main__':
     logger.info(f"Firebase: {'Initialized' if firebase_app else 'Not initialized'}")
     logger.info(f"MCP Toolbox URL: {config.toolbox_url}")
     logger.info("🚫 SQL Generation: DISABLED (MCP-Only Mode)")
-     
-if __name__ == '__main__':    
+    
     if chatbot:
         logger.info(f"MCP Toolbox: {'Enabled' if getattr(chatbot, 'toolbox_enabled', False) else 'Disabled'}")
         if hasattr(chatbot, 'toolbox_enabled') and chatbot.toolbox_enabled:
@@ -1109,6 +1135,6 @@ if __name__ == '__main__':
                 logger.info(f"Available MCP tools: {list(chatbot.tools.keys())}")
             else:
                 logger.info(f"MCP tools count: {len(chatbot.tools) if chatbot.tools else 0}")
-    
+
     app.run(host='0.0.0.0', port=port, debug=debug)
 
