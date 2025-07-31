@@ -16,7 +16,7 @@ class DashboardManager:
             
             @dataclass
             class AppConfig:
-                bq_project: str = os.getenv('BQ_PROJECT', 'sis-data-marts')
+                bq_project: str = os.getenv('BQ_PROJECT', 'scheels-data-marts')
                 model_name: str = os.getenv('DEFAULT_MODEL', 'gemini-2.5-pro')
                 preview_rows: int = int(os.getenv('PREVIEW_ROWS', '20'))
             
@@ -182,6 +182,7 @@ class DashboardManager:
             'get_sales_trends': lambda p: f"Show me sales trends for {p.get('period', 'daily')} period",
             'get_top_margin_items': lambda p: f"Get top {p.get('limit', 50)} items by margin",
             'get_inventory_status': lambda p: f"Show inventory status for top {p.get('limit', 100)} items",
+            'get_current_inventory_status': lambda p: f"Show current on-hand inventory for top {p.get('limit', 100)} items",
             'get_out_of_stock_items': lambda p: f"Show {p.get('limit', 20)} out of stock items",
             'get_overstock_items': lambda p: f"Show {p.get('limit', 20)} overstock items",
             'get_top_selling_items': lambda p: f"Get top {p.get('limit', 10)} selling items",

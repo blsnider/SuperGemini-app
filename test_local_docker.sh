@@ -35,7 +35,7 @@ if [ ! -f .env.docker ]; then
     cat > .env.docker << EOF
 # Local Docker environment variables
 ENVIRONMENT=development
-BQ_PROJECT=sis-data-marts
+BQ_PROJECT=scheels-data-marts
 DEFAULT_MODEL=gemini-2.5-pro
 ENABLE_AUTH=False
 TOOLBOX_URL=https://toolbox-41815171183.us-central1.run.app

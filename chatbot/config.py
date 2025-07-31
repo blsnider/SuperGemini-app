@@ -20,7 +20,7 @@ class Config:
 def get_store_mappings():
     """Load store mappings from BigQuery."""
     try:
-        client = bigquery.Client(project=os.getenv('BQ_PROJECT', 'sis-data-marts'))
+        client = bigquery.Client(project=os.getenv('BQ_PROJECT', 'scheels-data-marts'))
         
         query = """
         SELECT 
@@ -29,7 +29,7 @@ def get_store_mappings():
             store_short_name,
             store_city,
             store_state
-        FROM `sis-data-marts.utility_data.mart_stores`
+        FROM `scheels-data-marts.utility_data.mart_stores`
         WHERE store_number IS NOT NULL
         """
         
@@ -377,7 +377,7 @@ def validate_model_selection(model_id: str) -> tuple[bool, str]:
 @dataclass
 class AppConfig:
     """Enhanced application configuration."""
-    bq_project: str = os.getenv('BQ_PROJECT', 'sis-data-marts-test')
+    bq_project: str = os.getenv('BQ_PROJECT', 'scheels-data-marts')
     default_model: str = os.getenv('DEFAULT_MODEL', 'gemini-2.5-pro')
     preview_rows: int = int(os.getenv('PREVIEW_ROWS', '20'))
     enable_weighting: bool = os.getenv('ENABLE_WEIGHTING', 'True').lower() == 'true'

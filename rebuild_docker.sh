@@ -32,7 +32,7 @@ gcloud run deploy ${SERVICE_NAME} \
     --cpu 2 \
     --timeout 300 \
     --max-instances 10 \
-    --set-env-vars="ENVIRONMENT=production,BQ_PROJECT=sis-data-marts,SECRETS_PROJECT=${PROJECT_ID}"
+    --set-env-vars="ENVIRONMENT=production,BQ_PROJECT=scheels-data-marts,SECRETS_PROJECT=${PROJECT_ID}"
 
 echo "✅ Deployment complete!"
 echo ""

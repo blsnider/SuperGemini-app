@@ -592,6 +592,7 @@
             { id: 'get_sell_through_rates', icon: '📊', label: 'Sell Through', description: 'Inventory sell-through rates' },
             { id: 'get_time_period_comparison', icon: '📅', label: 'Time Periods', description: 'Compare across time periods' },
             { id: 'get_inventory_status', icon: '📦', label: 'Inventory', description: 'Current inventory levels' },
+            { id: 'get_current_inventory_status', icon: '📋', label: 'Current Stock', description: 'Real-time on-hand inventory' },
             { id: 'get_inventory_risk_assessment', icon: '⚠️', label: 'Risk Analysis', description: 'Inventory risk priorities' },
             { id: 'get_out_of_stock_items', icon: '🚨', label: 'Out of Stock', description: 'Items with zero inventory' },
             { id: 'get_sales_trends', icon: '📈', label: 'Sales Trends', description: 'Sales performance over time' },
@@ -912,6 +913,8 @@
                     };
                 case 'get_inventory_risk_assessment':
                     return { ...baseQuery, limit: 100, min_priority_score: 50 };
+                case 'get_current_inventory_status':
+                    return { ...baseQuery, limit: 100, sort_by: 'retail_value' };
                 case 'get_shop_performance':
                     return { ...baseQuery, days_back: 42, metric_focus: 'revenue' };
                 case 'get_sell_through_rates':
@@ -957,6 +960,9 @@
                     break;
                 case 'get_inventory_risk_assessment':
                     query += ' inventory risk priority score 50+ limit 100';
+                    break;
+                case 'get_current_inventory_status':
+                    query += ' current on-hand inventory sorted by retail value limit 100';
                     break;
                 case 'get_shop_performance':
                     query += ' shop performance by revenue last 42 days';
