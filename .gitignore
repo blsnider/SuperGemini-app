@@ -8,6 +8,7 @@ __pycache__/
 venv/
 env/
 ENV/
+toolbox/
 
 # Environment variables
 .env
@@ -33,6 +34,7 @@ htmlcov/
 *_backup_*
 current-service.yaml
 test_*.py
+toolbox/
 
 # OS
 .DS_Store
