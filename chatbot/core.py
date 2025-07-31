@@ -279,17 +279,17 @@ class SuperGeminiRetailChatbot:
         return selected_tool, parameters
 
     def _extract_parameters_from_query(self, query: str, tool_name: str) -> Dict[str, Any]:
-        """Extract parameters from user query - matching the actual tool parameters"""
+        """Extract parameters from user query - only include explicitly mentioned parameters"""
         query_lower = query.lower()
         
         # Extract common parameters
         import re
         
-        # Extract limit
-        limit = 100  # Default limit
+        # Extract limit ONLY if explicitly mentioned
+        limit = None  # No default - let MCP tool use its own
         limit_patterns = [
             r'top\s+(\d+)', r'(\d+)\s+top', r'first\s+(\d+)', 
-            r'limit\s+(\d+)', r'show\s+(\d+)'
+            r'limit\s+(\d+)', r'show\s+(\d+)', r'best\s+(\d+)'
         ]
         for pattern in limit_patterns:
             match = re.search(pattern, query_lower)
@@ -297,8 +297,8 @@ class SuperGeminiRetailChatbot:
                 limit = int(match.group(1))
                 break
         
-        # Extract store ID
-        store_id = 0  # 0 means all stores
+        # Extract store ID ONLY if mentioned
+        store_id = None  # Let MCP use default
         if 'store 64' in query_lower or 'fargo' in query_lower:
             store_id = 64
         elif 'store 65' in query_lower or 'springfield' in query_lower:
@@ -308,20 +308,20 @@ class SuperGeminiRetailChatbot:
             if store_match:
                 store_id = int(store_match.group(1))
         
-        # Extract shop ID
-        shop_id = 0  # 0 means all shops
+        # Extract shop ID ONLY if mentioned
+        shop_id = None  # Let MCP use default
         shop_match = re.search(r'shop\s+(\d+)', query_lower)
         if shop_match:
             shop_id = int(shop_match.group(1))
         
-        # Extract year filter
-        year_filter = 0  # 0 means no year filter
+        # Extract year filter ONLY if mentioned
+        year_filter = None  # Let MCP use default
         year_match = re.search(r'(20\d{2})', query_lower)
         if year_match:
             year_filter = int(year_match.group(1))
         
-        # Extract days back with enhanced date parsing
-        days_back = 42  # Default to 42 days
+        # Extract days back ONLY if mentioned
+        days_back = None  # Let MCP use default
         
         # Import datetime for potential date parsing
         from datetime import datetime, timedelta
@@ -364,68 +364,104 @@ class SuperGeminiRetailChatbot:
             year_over_year = True
         elif 'last year' in query_lower or '365 day' in query_lower:
             days_back = 365
-        elif year_filter > 0:  # If specific year mentioned
+        elif year_filter is not None and year_filter > 0:  # If specific year mentioned
             days_back = 0  # Don't apply days_back filter when year is specified
         
-        # Build parameters based on tool
+        # Build parameters based on tool - only include explicitly set values
         if tool_name == 'get_top_selling_items':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,
-                'year_filter': year_filter,
-                'days_back': days_back,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if year_filter is not None:
+                params['year_filter'] = year_filter
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            return params
         
         elif tool_name == 'get_inventory_status':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,  # Add shop_id support
-                'risk_level': 'all',  # Add risk level
-                'min_on_hand': 0,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            # Only set risk_level if explicitly mentioned
+            if 'critical' in query_lower:
+                params['risk_level'] = 'critical'
+            elif 'high' in query_lower and 'risk' in query_lower:
+                params['risk_level'] = 'high'
+            elif 'medium' in query_lower and 'risk' in query_lower:
+                params['risk_level'] = 'medium'
+            elif 'low' in query_lower and 'risk' in query_lower:
+                params['risk_level'] = 'low'
+            if limit is not None:
+                params['limit'] = limit
+            return params
         
         elif tool_name == 'get_out_of_stock_items':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,  # Add shop_id support
-                'min_sales_30d': 1,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if limit is not None:
+                params['limit'] = limit
+            # Let MCP use its own default for min_sales_30d
+            return params
         
         elif tool_name == 'get_overstock_items':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,  # Add shop_id support
-                'days_supply_threshold': 90,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if limit is not None:
+                params['limit'] = limit
+            # Let MCP use its own default for days_supply_threshold
+            return params
         
         elif tool_name == 'get_sales_trends':
-            return {
-                'days_back': days_back,
-                'store_id': store_id,
-                'shop_id': shop_id,
-                'granularity': 'daily',  # Add default granularity
-                'include_comparisons': True  # Add default comparisons
-            }
+            params = {}
+            if days_back is not None:
+                params['days_back'] = days_back
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            # Only set granularity if mentioned
+            if 'daily' in query_lower:
+                params['granularity'] = 'daily'
+            elif 'weekly' in query_lower:
+                params['granularity'] = 'weekly'
+            elif 'monthly' in query_lower:
+                params['granularity'] = 'monthly'
+            return params
         
         elif tool_name == 'get_top_margin_items':
-            return {
-                'limit': limit,
-                'min_revenue': 1000,
-                'days_back': days_back,
-                'store_id': store_id,  # Add store_id support
-                'shop_id': shop_id  # Add shop_id support
-            }
+            params = {}
+            if limit is not None:
+                params['limit'] = limit
+            if days_back is not None:
+                params['days_back'] = days_back
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            # Let MCP use its own default for min_revenue
+            return params
         
         elif tool_name == 'get_return_analysis':
-            return {
-                'store_id': store_id,
-                'days_back': days_back,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            return params
         
         elif tool_name == 'get_comparison_analysis':
             # Extract store IDs from query using regex
@@ -458,74 +494,109 @@ class SuperGeminiRetailChatbot:
                 if limit_match:
                     comparison_limit = int(limit_match.group(1))
             
-            return {
-                'comparison_type': 'store',  # Default comparison type
-                'entity1_id': store1_id,  # Use entity1_id instead of store1_id
-                'entity2_id': store2_id,  # Use entity2_id instead of store2_id
-                'days_back': days_back,
-                'metric_focus': 'all',  # Default metric focus
-                'limit': comparison_limit
+            params = {
+                'comparison_type': 'store',  # Keep this as it's fundamental to the comparison
+                'entity1_id': store1_id,
+                'entity2_id': store2_id
             }
+            if days_back is not None:
+                params['days_back'] = days_back
+            if comparison_limit != 25:  # Only include if different from assumed default
+                params['limit'] = comparison_limit
+            return params
         
         # Add new tools
         elif tool_name == 'get_units_vs_dollars_comparison':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,
-                'days_back': days_back,
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            return params
         
         elif tool_name == 'get_shop_performance':
-            return {
-                'shop_id': shop_id,
-                'store_id': store_id,
-                'days_back': days_back,
-                'metric_focus': 'revenue'  # Default metric
-                # NO limit parameter
-            }
+            params = {}
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if store_id is not None:
+                params['store_id'] = store_id
+            if days_back is not None:
+                params['days_back'] = days_back
+            # Only set metric_focus if explicitly mentioned
+            if 'margin' in query_lower:
+                params['metric_focus'] = 'margin'
+            elif 'units' in query_lower or 'quantity' in query_lower:
+                params['metric_focus'] = 'units'
+            # Let MCP use its own default for metric_focus if not specified
+            return params
         
         elif tool_name == 'get_sell_through_rates':
-            return {
-                'store_id': store_id,
-                'shop_id': shop_id,
-                'days_period': 30,  # Default 30 days
-                'min_beginning_inventory': 10  # Default minimum
-                # NO limit parameter
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            # Only override days_period if explicitly mentioned
+            if days_back is not None:
+                params['days_period'] = days_back
+            # Let MCP use its own defaults
+            return params
         
         elif tool_name == 'get_time_period_comparison':
-            comparison_type = 'mom'  # Default month-over-month
+            params = {}
+            # Only set comparison_type if explicitly mentioned
             if 'year over year' in query_lower or 'yoy' in query_lower:
-                comparison_type = 'yoy'
+                params['comparison_type'] = 'yoy'
             elif 'week over week' in query_lower or 'wow' in query_lower:
-                comparison_type = 'wow'
+                params['comparison_type'] = 'wow'
             elif 'weekday' in query_lower or 'weekend' in query_lower:
-                comparison_type = 'weekday_weekend'
-                
-            return {
-                'comparison_type': comparison_type,
-                'store_id': store_id,
-                'shop_id': shop_id,
-                'aggregation_level': 'daily'  # Default aggregation
-                # NO limit parameter
-            }
+                params['comparison_type'] = 'weekday_weekend'
+            # Let MCP use its default if not specified
+            
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            
+            # Only set aggregation if mentioned
+            if 'daily' in query_lower:
+                params['aggregation_level'] = 'daily'
+            elif 'weekly' in query_lower:
+                params['aggregation_level'] = 'weekly'
+            elif 'shop' in query_lower and 'by shop' in query_lower:
+                params['aggregation_level'] = 'shop'
+            
+            return params
         
         elif tool_name == 'get_inventory_risk_assessment':
-            return {
-                'store_id': store_id,
-                # NO shop_id parameter
-                'min_priority_score': 0,  # Default to show all
-                'include_overstocked': True,  # Default include overstocked
-                'limit': limit
-            }
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            # Only set min_priority_score if mentioned
+            if 'high priority' in query_lower or 'critical' in query_lower:
+                params['min_priority_score'] = 60
+            elif 'medium priority' in query_lower:
+                params['min_priority_score'] = 30
+            # Only set include_overstocked if explicitly mentioned
+            if 'exclude overstock' in query_lower or 'no overstock' in query_lower:
+                params['include_overstocked'] = False
+            if limit is not None:
+                params['limit'] = limit
+            return params
         
-        # Fallback for unknown tools
-        return {
-            'store_id': store_id,
-            'shop_id': shop_id,
-            'limit': limit
-        }
+        # Fallback for unknown tools - only include explicitly set parameters
+        params = {}
+        if store_id is not None:
+            params['store_id'] = store_id
+        if shop_id is not None:
+            params['shop_id'] = shop_id
+        if limit is not None:
+            params['limit'] = limit
+        return params
 
     def chat(self, user_query, model_name=None, user_id=None, session_id=None):
         """
@@ -663,6 +734,9 @@ class SuperGeminiRetailChatbot:
                 'session_id': session_id or "default"
             })
             
+            # Extract summary statistics before formatting
+            summary_stats = self._extract_summary_statistics(df)
+            
             # Format results for return
             # Format only for display
             formatted_results = self._format_results(df)
@@ -684,7 +758,8 @@ class SuperGeminiRetailChatbot:
                 'total_session_cost': self.total_cost,
                 'toolbox_used': True,
                 'tool_name': tool_name,
-                'parameters': parameters
+                'parameters': parameters,
+                'summary_statistics': summary_stats  # Add summary stats separately
             }
             
             # Indicate summary is pending (will be loaded lazily)
@@ -851,6 +926,32 @@ class SuperGeminiRetailChatbot:
         
         formatted_df = df.copy()
         
+        # First, identify and remove summary statistics columns if they exist
+        summary_columns_to_drop = []
+        if len(formatted_df) > 1:
+            summary_patterns = [
+                'total_items', 'grand_total', 'avg_margin_pct_all',
+                'total_qualifying', 'star_performers', 'critical_items',
+                'total_oos', 'total_overstock', 'total_at_risk',
+                'overall_avg', 'total_analyzed', 'total_units_on_hand',
+                'total_retail_value', 'total_cost_value', 'value_at_risk',
+                'dead_stock', 'severe_overstock', 'high_risk',
+                'out_of_stock_count', 'overstock_count', 'avg_days_oos'
+            ]
+            
+            for col in formatted_df.columns:
+                col_lower = str(col).lower()
+                if any(pattern in col_lower for pattern in summary_patterns):
+                    # Check if all values are the same (indicating a summary stat)
+                    unique_values = formatted_df[col].dropna().unique()
+                    if len(unique_values) == 1:
+                        summary_columns_to_drop.append(col)
+            
+            # Drop summary columns from the main results
+            if summary_columns_to_drop:
+                formatted_df = formatted_df.drop(columns=summary_columns_to_drop)
+                logger.info(f"Removed {len(summary_columns_to_drop)} summary statistic columns from results")
+        
         # 1. CURRENCY FIELDS - Auto-detect and format
         currency_fields = self._detect_currency_columns(formatted_df)
         for col in currency_fields:
@@ -888,7 +989,7 @@ class SuperGeminiRetailChatbot:
         
         currency_cols = []
         for col in df.columns:
-            col_lower = col.lower()
+            col_lower = str(col).lower()
             if any(pattern in col_lower for pattern in currency_patterns):
                 # Verify it's actually numeric
                 if pd.api.types.is_numeric_dtype(df[col]):
@@ -902,7 +1003,7 @@ class SuperGeminiRetailChatbot:
         
         percentage_cols = []
         for col in df.columns:
-            col_lower = col.lower()
+            col_lower = str(col).lower()
             if any(pattern in col_lower for pattern in percentage_patterns):
                 if pd.api.types.is_numeric_dtype(df[col]):
                     percentage_cols.append(col)
@@ -919,7 +1020,7 @@ class SuperGeminiRetailChatbot:
         
         integer_cols = []
         for col in df.columns:
-            col_lower = col.lower()
+            col_lower = str(col).lower()
             if any(pattern in col_lower for pattern in integer_patterns):
                 if pd.api.types.is_numeric_dtype(df[col]):
                     integer_cols.append(col)
@@ -1045,17 +1146,79 @@ class SuperGeminiRetailChatbot:
             'store_id', 'shop_id', 'sale_date', 'snapshot_date'
         ]
         
+        # Identify summary statistics columns (these have the same value for all rows)
+        summary_columns = []
+        if len(df) > 1:
+            for col in df.columns:
+                # Check if all non-null values in the column are the same
+                unique_values = df[col].dropna().unique()
+                if len(unique_values) == 1 and col not in priority_columns:
+                    # Additional check for known summary column patterns
+                    col_lower = str(col).lower()
+                    if any(pattern in col_lower for pattern in [
+                        'total_items', 'grand_total', 'avg_margin_pct_all',
+                        'total_qualifying', 'star_performers', 'critical_items',
+                        'total_oos', 'total_overstock', 'total_at_risk',
+                        'overall_avg', 'total_analyzed', 'total_units_on_hand',
+                        'total_retail_value', 'total_cost_value'
+                    ]):
+                        summary_columns.append(col)
+        
         # Get existing columns in priority order
         ordered_columns = []
         for col in priority_columns:
             if col in df.columns:
                 ordered_columns.append(col)
         
-        # Add remaining columns
-        remaining_columns = [col for col in df.columns if col not in ordered_columns]
-        final_order = ordered_columns + remaining_columns
+        # Add remaining columns (excluding summary columns)
+        remaining_columns = [col for col in df.columns 
+                           if col not in ordered_columns and col not in summary_columns]
+        
+        # Put summary columns at the end
+        final_order = ordered_columns + remaining_columns + summary_columns
         
         return df[final_order]
+
+    def _extract_summary_statistics(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Extract summary statistics that are repeated in every row"""
+        summary_stats = {}
+        
+        if df is None or df.empty or len(df) < 2:
+            return summary_stats
+        
+        # Known summary statistic column patterns
+        summary_patterns = [
+            'total_items', 'grand_total', 'avg_margin_pct_all',
+            'total_qualifying', 'star_performers', 'critical_items',
+            'total_oos', 'total_overstock', 'total_at_risk',
+            'overall_avg', 'total_analyzed', 'total_units_on_hand',
+            'total_retail_value', 'total_cost_value', 'value_at_risk',
+            'dead_stock', 'severe_overstock', 'high_risk',
+            'out_of_stock_count', 'overstock_count', 'avg_days_oos'
+        ]
+        
+        for col in df.columns:
+            col_lower = str(col).lower()
+            # Check if column matches known summary patterns
+            if any(pattern in col_lower for pattern in summary_patterns):
+                # Verify all values are the same
+                unique_values = df[col].dropna().unique()
+                if len(unique_values) == 1:
+                    value = unique_values[0]
+                    # Format the value appropriately
+                    if pd.api.types.is_numeric_dtype(df[col]):
+                        if 'pct' in col_lower or 'percent' in col_lower:
+                            summary_stats[col] = f"{value:.1f}%"
+                        elif 'revenue' in col_lower or 'value' in col_lower or 'cost' in col_lower or 'margin' in col_lower:
+                            summary_stats[col] = f"${value:,.2f}"
+                        elif pd.api.types.is_integer_dtype(df[col]) or value == int(value):
+                            summary_stats[col] = f"{int(value):,}"
+                        else:
+                            summary_stats[col] = f"{value:,.2f}"
+                    else:
+                        summary_stats[col] = str(value)
+        
+        return summary_stats
 
     def _format_results(self, df: pd.DataFrame, preview_rows: int = None) -> List[Dict[str, Any]]:
         """

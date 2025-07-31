@@ -1,5 +1,5 @@
 # app.py - Updated for API separation (using your existing config pattern)
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 import os
 import logging
 from dataclasses import dataclass
@@ -167,7 +167,7 @@ def get_dashboard_manager():
 @app.route('/')
 def index():
     """Main page - redirect to chat"""
-    return render_template('chat.html')
+    return render_template('index.html')
 
 @app.route('/dashboard')
 def dashboard_page():
@@ -189,6 +189,182 @@ def legacy_chat():
 def legacy_models():
     """Legacy models endpoint - redirect to new API"""
     return api_get_models()
+
+@app.route('/history')
+def get_history():
+    """Get query history"""
+    try:
+        bot = get_chatbot()
+        # Get recent queries from session or database
+        history = bot.get_recent_queries(limit=10) if hasattr(bot, 'get_recent_queries') else []
+        return jsonify({'success': True, 'history': history})
+    except Exception as e:
+        logger.error(f"Error getting history: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/suggest')
+def get_suggestions():
+    """Get query suggestions based on partial input"""
+    try:
+        query = request.args.get('q', '').strip()
+        if len(query) < 2:
+            return jsonify({'success': True, 'suggestions': []})
+        
+        # Simple suggestions based on common queries
+        suggestions = []
+        
+        # Common query patterns
+        common_patterns = [
+            "top selling items",
+            "inventory status", 
+            "out of stock items",
+            "overstock analysis",
+            "sales trends",
+            "return analysis",
+            "store performance",
+            "margin analysis",
+            "inventory at risk"
+        ]
+        
+        # Filter patterns that match the query
+        for pattern in common_patterns:
+            if query.lower() in pattern.lower():
+                suggestions.append({
+                    'text': pattern,
+                    'type': 'suggested'
+                })
+        
+        return jsonify({'success': True, 'suggestions': suggestions[:5]})
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/clear_history', methods=['POST'])
+def clear_history():
+    """Clear query history"""
+    try:
+        # Clear from session if implemented
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error clearing history: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/cost_summary')
+def get_cost_summary():
+    """Get current session cost summary"""
+    try:
+        bot = get_chatbot()
+        # Get cost info from session or calculate
+        cost_summary = {
+            'total_session_cost': session.get('total_cost', 0.0),
+            'queries_executed': session.get('query_count', 0),
+            'average_cost_per_query': 0.0
+        }
+        
+        if cost_summary['queries_executed'] > 0:
+            cost_summary['average_cost_per_query'] = cost_summary['total_session_cost'] / cost_summary['queries_executed']
+            
+        return jsonify({'success': True, 'cost_summary': cost_summary})
+    except Exception as e:
+        logger.error(f"Error getting cost summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/export', methods=['POST'])
+def export_data():
+    """Export data in specified format"""
+    try:
+        data = request.get_json()
+        format_type = data.get('format', 'csv')
+        
+        bot = get_chatbot()
+        if not hasattr(bot, 'df') or bot.df is None:
+            return jsonify({'success': False, 'error': 'No data available to export'}), 400
+            
+        if format_type == 'csv':
+            csv_data = bot.df.to_csv(index=False)
+            return jsonify({
+                'success': True,
+                'data': csv_data,
+                'filename': 'export.csv',
+                'mime_type': 'text/csv'
+            })
+        elif format_type == 'json':
+            json_data = bot.df.to_json(orient='records')
+            return jsonify({
+                'success': True,
+                'data': json_data,
+                'filename': 'export.json',
+                'mime_type': 'application/json'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Unsupported format'}), 400
+            
+    except Exception as e:
+        logger.error(f"Error exporting data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/generate_chart', methods=['POST'])
+def generate_chart():
+    """Generate chart for the last query results"""
+    try:
+        bot = get_chatbot()
+        if not hasattr(bot, 'df') or bot.df is None:
+            return jsonify({'success': False, 'error': 'No data available for chart'}), 400
+            
+        # Simple chart generation - you can enhance this
+        chart_html = "<div>Chart generation not yet implemented</div>"
+        
+        return jsonify({'success': True, 'chart': chart_html})
+    except Exception as e:
+        logger.error(f"Error generating chart: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/generate_summary', methods=['POST'])
+def generate_summary():
+    """Generate AI summary for the last query results"""
+    try:
+        data = request.get_json()
+        model = data.get('model')
+        
+        bot = get_chatbot()
+        if not hasattr(bot, 'df') or bot.df is None:
+            return jsonify({'success': False, 'error': 'No data available to summarize'}), 400
+            
+        # Use the summarizer module
+        from chatbot.summarizer import generate_summary as gen_summary
+        summary = gen_summary(
+            df=bot.df,
+            query=session.get('last_query', ''),
+            model_name=model,
+            available_models=get_available_models(),
+            api_clients=bot.api_clients,
+            bigquery_utils=bot.bigquery_utils
+        )
+        
+        return jsonify({'success': True, 'summary': summary})
+    except Exception as e:
+        logger.error(f"Error generating summary: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/debug/mcp_status')
+def debug_mcp_status():
+    """Debug endpoint to check MCP toolbox status"""
+    try:
+        bot = get_chatbot()
+        diagnostic_info = {
+            'chatbot_status': {
+                'initialized': bot is not None,
+                'toolbox_enabled': hasattr(bot, 'toolbox') and bot.toolbox is not None,
+                'tools_count': len(bot.available_tools) if hasattr(bot, 'available_tools') else 0,
+                'available_tools': list(bot.available_tools.keys()) if hasattr(bot, 'available_tools') else []
+            },
+            'connection_test': 'OK' if bot else 'Failed'
+        }
+        
+        return jsonify({'success': True, 'diagnostic_info': diagnostic_info})
+    except Exception as e:
+        logger.error(f"Error in MCP status check: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # =============================================================================
 # API ROUTES (Return JSON data)
@@ -336,8 +512,8 @@ def api_dashboard_metrics():
         
         logger.info(f"Fetching dashboard metrics for store: {store_id}, shop: {shop_id}")
         
-        # Build query for sales trends to get detailed data
-        query = f"show me sales trends"
+        # Build query for top selling items to get aggregate metrics
+        query = f"show me top selling items"
         if store_id > 0:
             query += f" for store {store_id}"
         if shop_id > 0:
@@ -357,39 +533,81 @@ def api_dashboard_metrics():
         }
         
         if result.get('success') and result.get('has_data'):
-            # Try to extract metrics from the data
             try:
-                results_data = result.get('results_data', [])
-                if results_data and len(results_data) > 0:
-                    # Sum up the metrics from the data
+                # Try to extract metrics from summary statistics first
+                summary_stats = result.get('summary_statistics', {})
+                
+                if summary_stats:
+                    # Use summary statistics for accurate totals
                     total_revenue = 0
                     total_units = 0
-                    total_profit = 0
+                    margin_pct = 0
                     
-                    for row in results_data:
-                        # Handle different possible column names
-                        revenue = float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
-                        units = int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
-                        profit = float(row.get('total_profit', 0) or row.get('profit', 0) or 0)
+                    # Extract from summary stats
+                    for key, value in summary_stats.items():
+                        key_lower = key.lower()
+                        # Clean numeric values (remove $, commas, %)
+                        clean_value = str(value).replace('$', '').replace(',', '').replace('%', '')
                         
-                        total_revenue += revenue
-                        total_units += units
-                        total_profit += profit
+                        if 'grand_total_revenue' in key_lower or 'total_revenue' in key_lower:
+                            try:
+                                total_revenue = float(clean_value)
+                            except:
+                                pass
+                        elif 'grand_total_units' in key_lower or 'total_units' in key_lower:
+                            try:
+                                total_units = int(float(clean_value))
+                            except:
+                                pass
+                        elif 'avg_margin_pct' in key_lower or 'margin_pct' in key_lower:
+                            try:
+                                margin_pct = float(clean_value)
+                            except:
+                                pass
                     
-                    # Calculate COGS and margin
+                    # Calculate profit and COGS based on margin
+                    total_profit = (total_revenue * margin_pct / 100) if margin_pct > 0 else 0
                     total_cogs = total_revenue - total_profit
-                    margin_pct = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
                     
-                    metrics['total_revenue'] = total_revenue
-                    metrics['margin_pct'] = margin_pct
-                    metrics['total_units'] = total_units
-                    metrics['total_profit'] = total_profit
-                    metrics['total_cogs'] = total_cogs
-                    
-                    logger.info(f"Calculated metrics: {metrics}")
+                    logger.info(f"Extracted from summary stats: revenue={total_revenue}, units={total_units}, margin={margin_pct}%")
+                else:
+                    # Fallback to calculating from raw data
+                    results_data = result.get('results_data', [])
+                    if results_data and len(results_data) > 0:
+                        # Sum up the metrics from the data
+                        total_revenue = 0
+                        total_units = 0
+                        total_profit = 0
+                        
+                        for row in results_data:
+                            # Handle different possible column names
+                            revenue = float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
+                            units = int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
+                            margin = float(row.get('total_margin', 0) or row.get('margin', 0) or 0)
+                            
+                            total_revenue += revenue
+                            total_units += units
+                            total_profit += margin
+                        
+                        # Calculate COGS and margin
+                        total_cogs = total_revenue - total_profit
+                        margin_pct = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+                
+                # Set metrics regardless of which path we took
+                metrics['total_revenue'] = total_revenue
+                metrics['margin_pct'] = margin_pct
+                metrics['total_units'] = total_units
+                metrics['total_profit'] = total_profit
+                metrics['total_cogs'] = total_cogs
+                
+                logger.info(f"Calculated metrics: {metrics}")
             except Exception as calc_error:
                 logger.error(f"Error calculating metrics: {calc_error}")
+            # Check if results_data is defined
+            if 'results_data' in locals():
                 logger.error(f"Sample data: {results_data[0] if results_data else 'No data'}")
+            else:
+                logger.error("No results_data available")
         
         return jsonify({'success': True, 'metrics': metrics})
     except Exception as e:

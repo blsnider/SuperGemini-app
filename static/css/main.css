@@ -117,6 +117,31 @@ body {
     right: 20px;
 }
 
+/* Version Badge */
+.version-badge {
+    position: fixed;
+    top: 20px;
+    right: 140px; /* Position to the left of health indicator */
+    background: rgba(102, 126, 234, 0.9);
+    color: #ffffff;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: 700;
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    cursor: help;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+    z-index: 100;
+}
+
+.version-badge:hover {
+    background: rgba(118, 75, 162, 0.9);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
 /* Navigation Buttons */
 .navigation-buttons {
     display: flex;

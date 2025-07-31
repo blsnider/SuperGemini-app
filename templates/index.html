@@ -155,6 +155,29 @@
             z-index: 1;
         }
         
+        .version-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.3);
+            color: #ffffff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 700;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            cursor: help;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .version-badge:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
         /* Sidebar Content Styles */
         .sidebar h3 {
             color: #333;
@@ -742,6 +765,11 @@
                 </button>
             </div>
             
+            <h3>⚙️ Model Configuration</h3>
+            <button class="nav-button" onclick="showModelConfigDialog()" style="margin-bottom: 20px;">
+                <i>🔧</i> Configure Models
+            </button>
+            
             <h3>💰 Session Cost</h3>
             <div class="cost-display" id="costDisplay">
                 <h4>Current Session</h4>
@@ -776,6 +804,7 @@
             <div class="header">
                 <h1>🤖 Super Gemini Analytics Assistant</h1>
                 <p>MCP-powered AI for retail analytics, inventory optimization, and returns analysis</p>
+                <span class="version-badge" title="Version 2.4.6 - Filtered Total Items, reordered columns, renamed margin to profit">v2.4.6</span>
             </div>
             
             <div id="chatView" class="container" style="flex: 1; display: flex; flex-direction: column;">
@@ -811,7 +840,7 @@
             </div>
             
             <div id="dashboardView" style="display: none;">
-                <iframe src="/dashboard/" width="100%" height="800" frameborder="0" style="border-radius: 15px;"></iframe>
+                <iframe src="/dashboard" width="100%" height="800" frameborder="0" style="border-radius: 15px;"></iframe>
             </div>
         </div>
     </div>
@@ -826,6 +855,21 @@
                 <button onclick="exportData('json')" class="tertiary-button">📋 JSON</button>
             </div>
             <button onclick="closeExportDialog()">Cancel</button>
+        </div>
+    </div>
+    
+    <!-- Model Configuration Dialog -->
+    <div class="export-dialog" id="modelConfigDialog">
+        <div class="export-content" style="max-width: 600px;">
+            <h3>🔧 Model Configuration</h3>
+            <p>Select which AI models to show in the dropdown:</p>
+            <div id="modelCheckboxList" style="margin: 20px 0; max-height: 400px; overflow-y: auto;">
+                <!-- Model checkboxes will be dynamically generated here -->
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="saveModelConfig()" class="secondary-button">Save</button>
+                <button onclick="closeModelConfigDialog()">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -1008,12 +1052,6 @@
                 content += '<div class="results-table">' + escapeHtml(resultsToDisplay) + '</div>';
             }
             
-            if (data.has_data && data.row_count > 20) {
-                content += `<div style="color: #666; font-style: italic; margin-top: 10px; text-align: center;">`;
-                content += `Showing first 20 rows of ${data.row_count.toLocaleString()} total results`;
-                content += `</div>`;
-            }
-            
             if (data.has_data) {
                 content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
                 content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
@@ -1075,8 +1113,90 @@
         function createSortableTable(data) {
             if (!data || data.length === 0) return 'No data available';
             
-            const headers = Object.keys(data[0]);
-            let html = '<table class="sortable-table" id="sortableTable">';
+            // Extract and store summary statistics before filtering columns
+            const summaryStats = extractSummaryStats(data);
+            
+            // Filter out the columns we don't want to display
+            const columnsToExclude = [
+                'avg_margin_pct_all_items', 'avg_margin_%_all_items', 'avg_margin_pct_all',
+                'avg_unit_price', 'grand_total_revenue', 'grand_total_units',
+                'grand_total_margin', 'grand_total_items', 'total_items'
+            ];
+            
+            // Define the desired column order
+            const columnOrder = [
+                'shop_id', 'shop_name', 'vendor', 'style', 'product_name', 
+                'sku_id', 'total_revenue', 'total_cost', 'total_margin', 'margin_pct',
+                'margin_%', 'margin_percent'
+            ];
+            
+            // Get all headers excluding the unwanted columns
+            const allHeaders = Object.keys(data[0]);
+            const availableHeaders = allHeaders.filter(header => {
+                const headerLower = header.toLowerCase();
+                return !columnsToExclude.some(exclude => 
+                    headerLower === exclude.toLowerCase() || 
+                    headerLower.replace(/_/g, ' ') === exclude.toLowerCase().replace(/_/g, ' ')
+                );
+            });
+            
+            // Order headers based on columnOrder, then add any remaining headers
+            const headers = [];
+            
+            // First add headers in the specified order if they exist
+            columnOrder.forEach(desiredCol => {
+                const match = availableHeaders.find(header => {
+                    const headerLower = header.toLowerCase().replace(/_/g, '');
+                    const desiredLower = desiredCol.toLowerCase().replace(/_/g, '');
+                    return headerLower === desiredLower || 
+                           headerLower === desiredCol.toLowerCase() ||
+                           header.toLowerCase() === desiredCol;
+                });
+                if (match && !headers.includes(match)) {
+                    headers.push(match);
+                }
+            });
+            
+            // Then add any remaining headers not in the order list
+            availableHeaders.forEach(header => {
+                if (!headers.includes(header)) {
+                    headers.push(header);
+                }
+            });
+            
+            // Filter data to remove excluded columns
+            const filteredData = data.map(row => {
+                const newRow = {};
+                headers.forEach(header => {
+                    newRow[header] = row[header];
+                });
+                return newRow;
+            });
+            
+            let html = '<div class="table-container">';
+            
+            // Add totals row if we have summary statistics
+            if (summaryStats.hasStats) {
+                html += '<div class="totals-row" style="background: #f8f9fa; padding: 15px; margin-bottom: 10px; border-radius: 8px; font-weight: 600;">';
+                html += '<div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px;">';
+                
+                if (summaryStats.grandTotalRevenue !== null) {
+                    html += `<div>Grand Total Revenue: <span style="color: #059669;">$${summaryStats.grandTotalRevenue.toLocaleString()}</span></div>`;
+                }
+                if (summaryStats.grandTotalUnits !== null) {
+                    html += `<div>Grand Total Units: <span style="color: #2563eb;">${summaryStats.grandTotalUnits.toLocaleString()}</span></div>`;
+                }
+                if (summaryStats.grandTotalMargin !== null) {
+                    html += `<div>Grand Total Margin: <span style="color: #7c3aed;">$${summaryStats.grandTotalMargin.toLocaleString()}</span></div>`;
+                }
+                if (summaryStats.grandTotalItems !== null) {
+                    html += `<div>Grand Total Items: <span style="color: #dc2626;">${summaryStats.grandTotalItems.toLocaleString()}</span></div>`;
+                }
+                
+                html += '</div></div>';
+            }
+            
+            html += '<table class="sortable-table" id="sortableTable">';
             
             // Create header
             html += '<thead><tr>';
@@ -1087,9 +1207,10 @@
             });
             html += '</tr></thead>';
             
-            // Create body
+            // Create body - limit to first 20 rows
             html += '<tbody id="sortableTableBody">';
-            data.forEach(row => {
+            const rowsToShow = Math.min(20, filteredData.length);
+            filteredData.slice(0, rowsToShow).forEach(row => {
                 html += '<tr>';
                 headers.forEach(header => {
                     const value = row[header];
@@ -1101,14 +1222,144 @@
             });
             html += '</tbody></table>';
             
-            // Store data for sorting
-            window.currentTableData = data;
+            // Add pagination controls if more than 20 rows
+            if (filteredData.length > 20) {
+                html += createPaginationControls(filteredData.length);
+            }
+            
+            html += '</div>';
+            
+            // Store filtered data for sorting and pagination
+            window.currentTableData = filteredData;
+            window.currentTableHeaders = headers;
+            window.currentTablePage = 1;
             window.currentSort = { column: null, direction: null };
             
             return html;
         }
         
+        function extractSummaryStats(data) {
+            const stats = {
+                hasStats: false,
+                grandTotalRevenue: null,
+                grandTotalUnits: null,
+                grandTotalMargin: null,
+                grandTotalItems: null
+            };
+            
+            if (!data || data.length === 0) return stats;
+            
+            // Check first row for summary columns
+            const firstRow = data[0];
+            
+            // Look for grand total revenue
+            const revenueKeys = ['grand_total_revenue', 'grand_total_sales', 'total_revenue'];
+            for (const key of revenueKeys) {
+                if (firstRow[key] !== undefined && firstRow[key] !== null) {
+                    stats.grandTotalRevenue = parseFloat(firstRow[key]);
+                    stats.hasStats = true;
+                    break;
+                }
+            }
+            
+            // Look for grand total units
+            const unitsKeys = ['grand_total_units', 'total_units', 'total_units_sold'];
+            for (const key of unitsKeys) {
+                if (firstRow[key] !== undefined && firstRow[key] !== null) {
+                    stats.grandTotalUnits = parseFloat(firstRow[key]);
+                    stats.hasStats = true;
+                    break;
+                }
+            }
+            
+            // Look for grand total margin
+            const marginKeys = ['grand_total_margin', 'total_margin', 'total_margin_dollars'];
+            for (const key of marginKeys) {
+                if (firstRow[key] !== undefined && firstRow[key] !== null) {
+                    stats.grandTotalMargin = parseFloat(firstRow[key]);
+                    stats.hasStats = true;
+                    break;
+                }
+            }
+            
+            // Look for grand total items/SKUs
+            const itemsKeys = ['grand_total_items', 'total_items', 'total_skus', 'unique_items'];
+            for (const key of itemsKeys) {
+                if (firstRow[key] !== undefined && firstRow[key] !== null) {
+                    stats.grandTotalItems = parseFloat(firstRow[key]);
+                    stats.hasStats = true;
+                    break;
+                }
+            }
+            
+            return stats;
+        }
+        
+        function createPaginationControls(totalRows) {
+            const totalPages = Math.ceil(totalRows / 20);
+            let html = '<div class="pagination-controls" style="margin-top: 15px; text-align: center;">';
+            
+            // Previous button
+            html += `<button onclick="changePage(-1)" id="prevPageBtn" style="margin: 0 5px;" disabled>Previous</button>`;
+            
+            // Page info
+            html += `<span style="margin: 0 15px;">Page <span id="currentPage">1</span> of ${totalPages} (${totalRows} total rows)</span>`;
+            
+            // Next button
+            html += `<button onclick="changePage(1)" id="nextPageBtn" style="margin: 0 5px;" ${totalPages <= 1 ? 'disabled' : ''}>Next</button>`;
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function changePage(direction) {
+            if (!window.currentTableData) return;
+            
+            const totalPages = Math.ceil(window.currentTableData.length / 20);
+            const newPage = window.currentTablePage + direction;
+            
+            if (newPage < 1 || newPage > totalPages) return;
+            
+            window.currentTablePage = newPage;
+            updateTableDisplay();
+        }
+        
+        function updateTableDisplay() {
+            const tbody = document.getElementById('sortableTableBody');
+            if (!tbody || !window.currentTableData) return;
+            
+            const startIdx = (window.currentTablePage - 1) * 20;
+            const endIdx = startIdx + 20;
+            const pageData = window.currentTableData.slice(startIdx, endIdx);
+            const headers = window.currentTableHeaders || Object.keys(window.currentTableData[0]);
+            
+            // Clear and rebuild tbody
+            tbody.innerHTML = '';
+            pageData.forEach(row => {
+                let rowHtml = '<tr>';
+                headers.forEach(header => {
+                    const value = row[header];
+                    const formattedValue = formatCellValue(value, header);
+                    const cellClass = getCellClass(header);
+                    rowHtml += `<td class="${cellClass}">${formattedValue}</td>`;
+                });
+                rowHtml += '</tr>';
+                tbody.innerHTML += rowHtml;
+            });
+            
+            // Update pagination controls
+            const totalPages = Math.ceil(window.currentTableData.length / 20);
+            document.getElementById('currentPage').textContent = window.currentTablePage;
+            document.getElementById('prevPageBtn').disabled = window.currentTablePage <= 1;
+            document.getElementById('nextPageBtn').disabled = window.currentTablePage >= totalPages;
+        }
+        
         function formatHeaderName(header) {
+            // Special case for Total Margin -> Profit
+            if (header.toLowerCase() === 'total_margin' || header.toLowerCase() === 'total margin') {
+                return 'Profit';
+            }
+            
             return header.replace(/_/g, ' ')
                         .replace(/\b\w/g, l => l.toUpperCase())
                         .replace(/Pct/g, '%')
@@ -1227,22 +1478,11 @@
                 return direction === 'desc' ? -comparison : comparison;
             });
             
-            // Re-render table body
-            const tbody = document.getElementById('sortableTableBody');
-            if (tbody) {
-                const headers = Object.keys(window.currentTableData[0]);
-                tbody.innerHTML = window.currentTableData.map(row => {
-                    let rowHtml = '<tr>';
-                    headers.forEach(header => {
-                        const value = row[header];
-                        const formattedValue = formatCellValue(value, header);
-                        const cellClass = getCellClass(header);
-                        rowHtml += `<td class="${cellClass}">${formattedValue}</td>`;
-                    });
-                    rowHtml += '</tr>';
-                    return rowHtml;
-                }).join('');
-            }
+            // Reset to page 1 after sorting
+            window.currentTablePage = 1;
+            
+            // Update the display with current page
+            updateTableDisplay();
         }
         
         async function loadModels() {
@@ -1272,9 +1512,17 @@
             
             console.log('Populating dropdown with models:', models);
             
+            // Get enabled models from localStorage
+            const enabledModels = JSON.parse(localStorage.getItem('enabledModels') || '{}');
+            
             const providers = {};
             
             Object.entries(models).forEach(([modelId, config]) => {
+                // Skip disabled models
+                if (enabledModels[modelId] === false) {
+                    return;
+                }
+                
                 const provider = config.provider || 'unknown';
                 if (!providers[provider]) {
                     providers[provider] = [];
@@ -1285,6 +1533,8 @@
             console.log('Grouped by providers:', providers);
             
             Object.entries(providers).forEach(([provider, modelList]) => {
+                if (modelList.length === 0) return; // Skip empty providers
+                
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = getProviderDisplayName(provider);
                 
@@ -1301,16 +1551,15 @@
                 select.appendChild(optgroup);
             });
             
-            // Set default to claude-sonnet-4-20250514
+            // Set default to claude-sonnet-4-20250514 if enabled
             const defaultModel = 'claude-sonnet-4-20250514';
-            if (models[defaultModel]) {
+            if (models[defaultModel] && enabledModels[defaultModel] !== false) {
                 select.value = defaultModel;
                 console.log('Set default model to:', defaultModel);
             } else if (select.options.length > 0) {
-                // Fallback to first available model if default not found
-                const firstModel = Object.keys(models)[0];
-                select.value = firstModel;
-                console.log('Default model not found, using:', firstModel);
+                // Fallback to first available enabled model
+                select.value = select.options[0].value;
+                console.log('Default model not available, using first enabled model');
             }
             
             // Force a repaint to ensure dropdown is visible
@@ -1411,6 +1660,10 @@
         function selectSuggestion(text) {
             document.getElementById('queryInput').value = text;
             document.getElementById('suggestionsDropdown').style.display = 'none';
+            // Close sidebar when selecting from history
+            if (document.getElementById('sidebar').classList.contains('open')) {
+                closeSidebar();
+            }
         }
         
         async function loadHistory() {
@@ -1532,7 +1785,7 @@
         }
         
         function submitQuery() {
-            executeQuery('/chat', false);
+            executeQuery('/api/chat/message', false);
         }
         
         async function executeQuery(endpoint, isAdvanced) {
@@ -1768,6 +2021,84 @@
             document.getElementById('exportDialog').style.display = 'none';
         }
         
+        function showModelConfigDialog() {
+            const dialog = document.getElementById('modelConfigDialog');
+            const checkboxList = document.getElementById('modelCheckboxList');
+            
+            // Get current enabled models from localStorage
+            const enabledModels = JSON.parse(localStorage.getItem('enabledModels') || '{}');
+            
+            // Clear existing checkboxes
+            checkboxList.innerHTML = '';
+            
+            // Group models by provider
+            const providers = {};
+            Object.entries(availableModels).forEach(([modelId, config]) => {
+                const provider = config.provider || 'unknown';
+                if (!providers[provider]) {
+                    providers[provider] = [];
+                }
+                providers[provider].push({ id: modelId, config });
+            });
+            
+            // Create checkboxes grouped by provider
+            Object.entries(providers).forEach(([provider, modelList]) => {
+                const providerDiv = document.createElement('div');
+                providerDiv.style.marginBottom = '15px';
+                
+                const providerLabel = document.createElement('h4');
+                providerLabel.textContent = getProviderDisplayName(provider);
+                providerLabel.style.marginBottom = '10px';
+                providerLabel.style.color = '#667eea';
+                providerDiv.appendChild(providerLabel);
+                
+                modelList.forEach(({ id, config }) => {
+                    const label = document.createElement('label');
+                    label.style.display = 'flex';
+                    label.style.alignItems = 'center';
+                    label.style.marginBottom = '8px';
+                    label.style.cursor = 'pointer';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = id;
+                    checkbox.checked = enabledModels[id] !== false; // Default to true if not set
+                    checkbox.style.marginRight = '10px';
+                    
+                    const modelName = document.createElement('span');
+                    modelName.textContent = config.name || config.description || id;
+                    
+                    label.appendChild(checkbox);
+                    label.appendChild(modelName);
+                    providerDiv.appendChild(label);
+                });
+                
+                checkboxList.appendChild(providerDiv);
+            });
+            
+            dialog.style.display = 'flex';
+        }
+        
+        function closeModelConfigDialog() {
+            document.getElementById('modelConfigDialog').style.display = 'none';
+        }
+        
+        function saveModelConfig() {
+            const checkboxes = document.querySelectorAll('#modelCheckboxList input[type="checkbox"]');
+            const enabledModels = {};
+            
+            checkboxes.forEach(checkbox => {
+                enabledModels[checkbox.value] = checkbox.checked;
+            });
+            
+            localStorage.setItem('enabledModels', JSON.stringify(enabledModels));
+            
+            // Refresh the model dropdown
+            populateModelSelect(availableModels);
+            
+            closeModelConfigDialog();
+        }
+        
         async function exportData(format) {
             try {
                 const response = await fetch('/export', {
@@ -1847,6 +2178,7 @@
             
             if (e.key === 'Escape') {
                 closeExportDialog();
+                closeModelConfigDialog();
                 closeSidebar();
             }
         });

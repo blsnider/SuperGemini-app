@@ -715,6 +715,17 @@
         async function loadKeyMetrics() {
             try {
                 console.log('Loading key metrics...');
+                
+                // If no store or shop selected, show prompt
+                if (!currentStoreId && !currentShopId) {
+                    updateMetric('totalRevenue', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    updateMetric('totalMargin', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    updateMetric('totalUnits', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    updateMetric('totalProfit', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    updateMetric('totalCOGS', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    return;
+                }
+                
                 const params = new URLSearchParams();
                 if (currentStoreId) params.append('store_id', currentStoreId);
                 if (currentShopId) params.append('shop_id', currentShopId);
@@ -833,7 +844,7 @@
                 // Check if we have cached data
                 const cached = toolsetData[tool.id];
                 if (cached && (new Date() - cached.timestamp) < 60000) {  // 1 minute cache
-                    displayToolData(tool, cached.data);
+                    displayToolData(tool, cached.data, cached.summary_statistics);
                     return;
                 }
                 
@@ -855,12 +866,13 @@
                 const data = await response.json();
                 
                 if (data.success && data.results) {
-                    displayToolData(tool, data.results);
+                    displayToolData(tool, data.results, data.summary_statistics);
                     
                     // Update cache
                     toolsetData[tool.id] = {
                         data: data.results,
                         raw_data: data.results_data || data.results,
+                        summary_statistics: data.summary_statistics,
                         timestamp: new Date(),
                         row_count: data.row_count,
                         query: query
@@ -983,7 +995,7 @@
             return query;
         }
         
-        function displayToolData(tool, data) {
+        function displayToolData(tool, data, summaryStats) {
             const modalBody = document.getElementById('modalBody');
             
             if (!data || data.length === 0) {
@@ -994,6 +1006,43 @@
                     </div>
                 `;
                 return;
+            }
+            
+            // Clear modal body
+            modalBody.innerHTML = '';
+            
+            // Display summary statistics if available
+            if (summaryStats && Object.keys(summaryStats).length > 0) {
+                const summaryDiv = document.createElement('div');
+                summaryDiv.style.cssText = 'background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #667eea;';
+                
+                const summaryTitle = document.createElement('h3');
+                summaryTitle.textContent = 'Summary Statistics';
+                summaryTitle.style.cssText = 'margin: 0 0 12px 0; color: #374151; font-size: 1.1em;';
+                summaryDiv.appendChild(summaryTitle);
+                
+                const summaryGrid = document.createElement('div');
+                summaryGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;';
+                
+                Object.entries(summaryStats).forEach(([key, value]) => {
+                    const statItem = document.createElement('div');
+                    statItem.style.cssText = 'background: white; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);';
+                    
+                    const statLabel = document.createElement('div');
+                    statLabel.textContent = formatColumnName(key);
+                    statLabel.style.cssText = 'font-size: 0.85em; color: #6b7280; margin-bottom: 4px;';
+                    
+                    const statValue = document.createElement('div');
+                    statValue.textContent = value;
+                    statValue.style.cssText = 'font-size: 1.2em; font-weight: 600; color: #111827;';
+                    
+                    statItem.appendChild(statLabel);
+                    statItem.appendChild(statValue);
+                    summaryGrid.appendChild(statItem);
+                });
+                
+                summaryDiv.appendChild(summaryGrid);
+                modalBody.appendChild(summaryDiv);
             }
             
             // Create table
@@ -1054,7 +1103,6 @@
             });
             table.appendChild(tbody);
             
-            modalBody.innerHTML = '';
             modalBody.appendChild(table);
         }
         
