@@ -34,10 +34,8 @@ htmlcov/
 *_backup_*
 current-service.yaml
 test_*.py
-toolbox/
 
 # OS
 .DS_Store
 Thumbs.db
 EOF
-chatbot/tools.yaml

@@ -804,7 +804,7 @@
             <div class="header">
                 <h1>🤖 Super Gemini Analytics Assistant</h1>
                 <p>MCP-powered AI for retail analytics, inventory optimization, and returns analysis</p>
-                <span class="version-badge" title="Version 2.4.6 - Filtered Total Items, reordered columns, renamed margin to profit">v2.4.6</span>
+                <span class="version-badge" title="Version 2.4.8 - Fixed summary generation endpoint">v2.4.8</span>
             </div>
             
             <div id="chatView" class="container" style="flex: 1; display: flex; flex-direction: column;">
@@ -814,6 +814,12 @@
                             <label for="modelSelect">AI Model:</label>
                             <select id="modelSelect">
                                 <option value="">Loading models...</option>
+                            </select>
+                        </div>
+                        <div class="model-selector">
+                            <label for="mcpToolSelect">MCP Tool:</label>
+                            <select id="mcpToolSelect" style="min-width: 200px;">
+                                <option value="" style="color: #999;">Choose MCP tool - optional</option>
                             </select>
                         </div>
                     </div>
@@ -872,6 +878,20 @@
             </div>
         </div>
     </div>
+    
+    <!-- Summary Modal -->
+    <div class="export-dialog" id="summaryModal">
+        <div class="export-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <h3>🤖 AI Analysis Summary</h3>
+            <div id="summaryModalContent" style="margin: 20px 0; line-height: 1.6;">
+                <!-- Summary content will be loaded here -->
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button onclick="copySummaryToClipboard()" class="secondary-button">📋 Copy to Clipboard</button>
+                <button onclick="closeSummaryModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let currentMessageId = null;
@@ -907,6 +927,7 @@
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
             loadModels();
+            loadMCPTools();
             loadHistory();
             updateCostDisplay();
             checkHealth();
@@ -1020,18 +1041,6 @@
                 content += '</div>';
             }
             
-            if (data.auto_summary) {
-                content += '<div class="summary-box" style="margin: 20px 0;">';
-                content += '<h4>🤖 AI Insights (Auto-Generated)</h4>';
-                content += data.auto_summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
-                content += '</div>';
-            } else if (data.summary_error) {
-                content += '<div style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; border-radius: 8px; margin: 10px 0; font-size: 0.9em;">';
-                content += '<strong>⚠️ Auto-Summary Failed:</strong><br/>';
-                content += `${data.summary_error}<br/>`;
-                content += '<small>You can still generate a summary manually using the button below.</small>';
-                content += '</div>';
-            }
             
             let resultsToDisplay = '';
             
@@ -1055,18 +1064,14 @@
             if (data.has_data) {
                 content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
                 content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
-                
-                if (!data.auto_summary) {
-                    content += `<button class="tertiary-button" onclick="generateSummary(${currentMessageId})">💡 Generate Summary</button>`;
-                } else {
-                    content += `<button class="tertiary-button" onclick="regenerateSummary(${currentMessageId})" style="opacity: 0.7;">🔄 Regenerate Summary</button>`;
-                }
-                
+                content += `<button id="summaryBtn-${currentMessageId}" class="tertiary-button" onclick="showSummaryModal(${currentMessageId})" style="background: #9ca3af; cursor: not-allowed;" disabled>💡 View Summary</button>`;
                 content += '</div>';
+                
+                // Automatically generate summary after displaying results
+                setTimeout(() => autoGenerateSummary(currentMessageId), 500);
             }
             
             content += `<div id="chart-${currentMessageId}" class="chart-container"></div>`;
-            content += `<div id="summary-${currentMessageId}"></div>`;
             
             content += '<details style="margin-top: 15px;"><summary style="cursor: pointer; color: #667eea; font-weight: 500;">🔧 Tool Information</summary>';
             if (data.sql) {
@@ -1120,7 +1125,8 @@
             const columnsToExclude = [
                 'avg_margin_pct_all_items', 'avg_margin_%_all_items', 'avg_margin_pct_all',
                 'avg_unit_price', 'grand_total_revenue', 'grand_total_units',
-                'grand_total_margin', 'grand_total_items', 'total_items'
+                'grand_total_margin', 'grand_total_items', 'total_items', 
+                'total_items_in_results'
             ];
             
             // Define the desired column order
@@ -1506,6 +1512,39 @@
             }
         }
         
+        async function loadMCPTools() {
+            try {
+                const response = await fetch('/api/mcp/tools');
+                const data = await response.json();
+                
+                const select = document.getElementById('mcpToolSelect');
+                
+                if (data.success && data.tools.length > 0) {
+                    // Keep the default option
+                    select.innerHTML = '<option value="" style="color: #999;">Choose MCP tool - optional</option>';
+                    
+                    // Add all available tools
+                    data.tools.forEach(tool => {
+                        const option = document.createElement('option');
+                        option.value = tool.id;
+                        option.textContent = tool.name;
+                        option.title = tool.description;
+                        select.appendChild(option);
+                    });
+                    
+                    console.log('MCP tools loaded successfully:', data.tools.length);
+                } else {
+                    select.innerHTML = '<option value="">No MCP tools available</option>';
+                    select.disabled = true;
+                }
+            } catch (error) {
+                console.error('Error loading MCP tools:', error);
+                const select = document.getElementById('mcpToolSelect');
+                select.innerHTML = '<option value="">Error loading tools</option>';
+                select.disabled = true;
+            }
+        }
+        
         function populateModelSelect(models) {
             const select = document.getElementById('modelSelect');
             select.innerHTML = '';
@@ -1796,8 +1835,9 @@
             if (!query) return;
             
             const selectedModel = document.getElementById('modelSelect').value;
+            const selectedTool = document.getElementById('mcpToolSelect').value;
             
-            console.log('Submitting query with model:', selectedModel);
+            console.log('Submitting query with model:', selectedModel, 'and tool:', selectedTool);
             
             if (!selectedModel) {
                 addMessage('error', 'Please select an AI model from the dropdown.');
@@ -1817,6 +1857,11 @@
                     query: query,
                     model: selectedModel
                 };
+                
+                // Add MCP tool to request if selected
+                if (selectedTool) {
+                    requestBody.mcp_tool = selectedTool;
+                }
                 
                 console.log('Sending request:', requestBody);
                 
@@ -1982,6 +2027,77 @@
             }
         }
 
+        // Store summaries in memory
+        const summaryStorage = {};
+        
+        async function autoGenerateSummary(messageId) {
+            const selectedModel = document.getElementById('modelSelect').value;
+            const summaryBtn = document.getElementById(`summaryBtn-${messageId}`);
+            
+            try {
+                const response = await fetch('/generate_summary', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        use_parallel: false
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Store the summary
+                    summaryStorage[messageId] = data.summary;
+                    
+                    // Update button to yellow and enable it
+                    summaryBtn.style.background = 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)';
+                    summaryBtn.style.cursor = 'pointer';
+                    summaryBtn.disabled = false;
+                    summaryBtn.title = 'Click to view AI analysis';
+                } else {
+                    console.error('Failed to generate summary:', data.error);
+                    summaryBtn.textContent = '⚠️ Summary Failed';
+                    summaryBtn.title = data.error || 'Summary generation failed';
+                }
+            } catch (error) {
+                console.error('Error generating summary:', error);
+                summaryBtn.textContent = '⚠️ Summary Error';
+                summaryBtn.title = error.message;
+            }
+        }
+        
+        function showSummaryModal(messageId) {
+            const summary = summaryStorage[messageId];
+            if (!summary) return;
+            
+            const modalContent = document.getElementById('summaryModalContent');
+            modalContent.innerHTML = summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+            
+            document.getElementById('summaryModal').style.display = 'flex';
+        }
+        
+        function closeSummaryModal() {
+            document.getElementById('summaryModal').style.display = 'none';
+        }
+        
+        function copySummaryToClipboard() {
+            const modalContent = document.getElementById('summaryModalContent');
+            const text = modalContent.innerText || modalContent.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                // Show brief confirmation
+                const originalText = modalContent.innerHTML;
+                modalContent.innerHTML = '<div style="text-align: center; color: #10b981; font-size: 1.2em;">✅ Copied to clipboard!</div>';
+                setTimeout(() => {
+                    modalContent.innerHTML = originalText;
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+        
         async function regenerateSummary(messageId) {
             const summaryDiv = document.getElementById('summary-' + messageId);
             const selectedModel = document.getElementById('modelSelect').value;
@@ -2179,6 +2295,7 @@
             if (e.key === 'Escape') {
                 closeExportDialog();
                 closeModelConfigDialog();
+                closeSummaryModal();
                 closeSidebar();
             }
         });

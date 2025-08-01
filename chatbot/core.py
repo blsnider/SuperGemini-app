@@ -222,6 +222,15 @@ class SuperGeminiRetailChatbot:
             ('inventory', 'levels'): 'get_inventory_status',
             ('stock', 'analysis'): 'get_inventory_status',
             
+            # Inventory risk assessment queries
+            ('inventory', 'risk'): 'get_inventory_risk_assessment',
+            ('risk', 'assessment'): 'get_inventory_risk_assessment',
+            ('inventory', 'assessment'): 'get_inventory_risk_assessment',
+            ('stock', 'risk'): 'get_inventory_risk_assessment',
+            ('inventory', 'priority'): 'get_inventory_risk_assessment',
+            ('risk', 'analysis'): 'get_inventory_risk_assessment',
+            ('at', 'risk'): 'get_inventory_risk_assessment',
+            
             # Out of stock queries
             ('out', 'stock'): 'get_out_of_stock_items',
             ('stockout',): 'get_out_of_stock_items',
@@ -236,10 +245,13 @@ class SuperGeminiRetailChatbot:
             
             # Trends queries
             ('trends',): 'get_sales_trends',
+            ('trend',): 'get_sales_trends',
             ('over', 'time'): 'get_sales_trends',
             ('monthly', 'sales'): 'get_sales_trends',
             ('weekly', 'sales'): 'get_sales_trends',
             ('daily', 'sales'): 'get_sales_trends',
+            ('sales', 'trend'): 'get_sales_trends',
+            ('sales', 'trends'): 'get_sales_trends',
             
             # Margin queries
             ('margin',): 'get_top_margin_items',
@@ -301,8 +313,8 @@ class SuperGeminiRetailChatbot:
         store_id = None  # Let MCP use default
         if 'store 64' in query_lower or 'fargo' in query_lower:
             store_id = 64
-        elif 'store 65' in query_lower or 'springfield' in query_lower:
-            store_id = 65
+        elif 'store 78' in query_lower or 'springfield' in query_lower:
+            store_id = 78
         else:
             store_match = re.search(r'store\s+(\d+)', query_lower)
             if store_match:
@@ -576,6 +588,7 @@ class SuperGeminiRetailChatbot:
             params = {}
             if store_id is not None:
                 params['store_id'] = store_id
+            # Note: This tool doesn't support shop_id filtering
             # Only set min_priority_score if mentioned
             if 'high priority' in query_lower or 'critical' in query_lower:
                 params['min_priority_score'] = 60
@@ -584,8 +597,7 @@ class SuperGeminiRetailChatbot:
             # Only set include_overstocked if explicitly mentioned
             if 'exclude overstock' in query_lower or 'no overstock' in query_lower:
                 params['include_overstocked'] = False
-            if limit is not None:
-                params['limit'] = limit
+            # Note: This tool doesn't have a limit parameter
             return params
         
         # Fallback for unknown tools - only include explicitly set parameters
@@ -598,7 +610,7 @@ class SuperGeminiRetailChatbot:
             params['limit'] = limit
         return params
 
-    def chat(self, user_query, model_name=None, user_id=None, session_id=None):
+    def chat(self, user_query, model_name=None, user_id=None, session_id=None, mcp_tool=None):
         """
         Process user query using ONLY MCP Toolbox tools with automatic summary generation.
         """
@@ -614,10 +626,16 @@ class SuperGeminiRetailChatbot:
         total_start_time = time.time()
         execution_times = {}
 
-        logger.info(f"Processing query: {user_query}")
+        logger.info(f"Processing query: {user_query} (Explicit tool: {mcp_tool})")
 
-        # Map query to appropriate MCP tool
-        tool_name, parameters = self._map_query_to_tool(user_query)
+        # Use explicit tool if provided, otherwise map query to appropriate MCP tool
+        if mcp_tool and mcp_tool in self.tools:
+            tool_name = mcp_tool
+            parameters = self._extract_parameters_from_query(user_query, tool_name)
+            logger.info(f"Using explicitly selected tool: {tool_name}")
+        else:
+            # Map query to appropriate MCP tool
+            tool_name, parameters = self._map_query_to_tool(user_query)
         
         if tool_name not in self.tools:
             available_tools = list(self.tools.keys())

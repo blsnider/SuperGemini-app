@@ -277,11 +277,11 @@ def export_data():
         format_type = data.get('format', 'csv')
         
         bot = get_chatbot()
-        if not hasattr(bot, 'df') or bot.df is None:
+        if not hasattr(bot, 'last_df') or bot.last_df is None:
             return jsonify({'success': False, 'error': 'No data available to export'}), 400
             
         if format_type == 'csv':
-            csv_data = bot.df.to_csv(index=False)
+            csv_data = bot.last_df.to_csv(index=False)
             return jsonify({
                 'success': True,
                 'data': csv_data,
@@ -289,7 +289,7 @@ def export_data():
                 'mime_type': 'text/csv'
             })
         elif format_type == 'json':
-            json_data = bot.df.to_json(orient='records')
+            json_data = bot.last_df.to_json(orient='records')
             return jsonify({
                 'success': True,
                 'data': json_data,
@@ -308,7 +308,7 @@ def generate_chart():
     """Generate chart for the last query results"""
     try:
         bot = get_chatbot()
-        if not hasattr(bot, 'df') or bot.df is None:
+        if not hasattr(bot, 'last_df') or bot.last_df is None:
             return jsonify({'success': False, 'error': 'No data available for chart'}), 400
             
         # Simple chart generation - you can enhance this
@@ -327,14 +327,15 @@ def generate_summary():
         model = data.get('model')
         
         bot = get_chatbot()
-        if not hasattr(bot, 'df') or bot.df is None:
+        # Check for last_df instead of df
+        if not hasattr(bot, 'last_df') or bot.last_df is None:
             return jsonify({'success': False, 'error': 'No data available to summarize'}), 400
             
         # Use the summarizer module
         from chatbot.summarizer import generate_summary as gen_summary
         summary = gen_summary(
-            df=bot.df,
-            query=session.get('last_query', ''),
+            df=bot.last_df,
+            query=bot.last_query or '',
             model_name=model,
             available_models=get_available_models(),
             api_clients=bot.api_clients,
@@ -378,11 +379,12 @@ def api_chat_message():
         data = request.get_json()
         query = data.get('query')
         model = data.get('model')
+        mcp_tool = data.get('mcp_tool')  # Get explicit MCP tool selection
         
         if not query:
             return jsonify({'success': False, 'error': 'Query is required'}), 400
             
-        response = get_chatbot().chat(query, model)
+        response = get_chatbot().chat(query, model, mcp_tool=mcp_tool)
         return jsonify(response)
         
     except Exception as e:
@@ -398,6 +400,54 @@ def api_get_models():
     except Exception as e:
         logger.error(f"Models API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/mcp/tools')
+def api_get_mcp_tools():
+    """Get available MCP tools - API endpoint"""
+    try:
+        bot = get_chatbot()
+        if not bot or not bot.toolbox_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'MCP toolbox not enabled',
+                'tools': []
+            })
+        
+        # Get available tools with descriptions
+        tools_list = []
+        if hasattr(bot, 'tools') and isinstance(bot.tools, dict):
+            # Map tool names to user-friendly descriptions
+            tool_descriptions = {
+                'get_top_selling_items': 'Top Selling Items',
+                'get_units_vs_dollars_comparison': 'Units vs Dollars Comparison',
+                'get_shop_performance': 'Shop Performance Analysis',
+                'get_sell_through_rates': 'Sell-Through Rate Analysis',
+                'get_time_period_comparison': 'Time Period Comparison',
+                'get_inventory_status': 'Inventory Status',
+                'get_current_inventory_status': 'Current Inventory Status',
+                'get_inventory_risk_assessment': 'Inventory Risk Assessment',
+                'get_out_of_stock_items': 'Out of Stock Items',
+                'get_sales_trends': 'Sales Trends',
+                'get_top_margin_items': 'Top Margin Items',
+                'get_overstock_items': 'Overstock Analysis',
+                'get_comparison_analysis': 'Store/Shop Comparison',
+                'get_return_analysis': 'Return Analysis'
+            }
+            
+            for tool_name in sorted(bot.tools.keys()):
+                tools_list.append({
+                    'id': tool_name,
+                    'name': tool_descriptions.get(tool_name, tool_name.replace('_', ' ').title()),
+                    'description': f"Execute {tool_name} MCP tool"
+                })
+        
+        return jsonify({
+            'success': True,
+            'tools': tools_list
+        })
+    except Exception as e:
+        logger.error(f"MCP tools API error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'tools': []}), 500
 
 @app.route('/api/chat/summary', methods=['POST'])
 def api_generate_summary():
