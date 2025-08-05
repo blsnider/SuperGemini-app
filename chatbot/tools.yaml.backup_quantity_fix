@@ -44,7 +44,7 @@ tools:
     statement: "SELECT \n  fs.sku_id,\n  MAX(skus.as400_data.sku_description) as product_name,\n\
       \  MAX(skus.as400_data.style) as style,\n  MAX(skus.as400_data.vendor_name1)\
       \ as vendor,\n  MAX(skus.as400_data.specialty_shop_description) as shop_name,\n\
-      \  fs.store_id as store_id,\n  SUM(CASE \n    WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n    ELSE fs.quantity\n  END) as total_units,\n  SUM(fs.price_extended)\
+      \  fs.store_id as store_id,\n  SUM(fs.quantity) as total_units,\n  SUM(fs.price_extended)\
       \ as total_revenue,\n  SUM(fs.cogs_extended) as total_cost,\n  SUM(CASE \n    WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n    ELSE fs.price_extended - fs.cogs_extended\n  END) as total_margin,\n  SAFE_DIVIDE(SUM(CASE \n    WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n    ELSE fs.price_extended - fs.cogs_extended\n  END), SUM(fs.price_extended)) * 100 as margin_pct\nFROM\
       \ `scheels-data-marts.facts_sales.fct_sales` fs\nLEFT JOIN `scheels-data-marts.dim_scheels.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\nWHERE 1=1\n  AND (@store_id = 0 OR fs.store_id\
@@ -81,7 +81,7 @@ tools:
     statement: "WITH store1_sales AS (\n  SELECT \n    fs.sku_id,\n    MAX(skus.as400_data.sku_description)\
       \ as product_name,\n    MAX(skus.as400_data.style) as style,\n    MAX(skus.as400_data.vendor_name1)\
       \ as vendor,\n    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as store1_units,\n    SUM(fs.price_extended) as store1_revenue,\n\
+      \    SUM(fs.quantity) as store1_units,\n    SUM(fs.price_extended) as store1_revenue,\n\
       \    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store1_rank\n  FROM\
       \ `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  LEFT JOIN `sis-data-marts.warehouse.dim_stores`\
@@ -89,7 +89,7 @@ tools:
       \    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
       \ CAST(@days_back AS INT64) DAY)\n    AND (@shop_id = 0 OR skus.specialty_shop\
       \ = @shop_id)\n  GROUP BY fs.sku_id\n),\nstore2_sales AS (\n  SELECT \n    fs.sku_id,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as store2_units,\n    SUM(fs.price_extended) as store2_revenue,\n\
+      \    SUM(fs.quantity) as store2_units,\n    SUM(fs.price_extended) as store2_revenue,\n\
       \    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store2_rank\n  FROM\
       \ `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  LEFT JOIN `sis-data-marts.warehouse.dim_stores`\
@@ -139,10 +139,10 @@ tools:
     statement: "WITH item_metrics AS (\n  SELECT \n    fs.sku_id,\n    MAX(skus.as400_data.sku_description)\
       \ as product_name,\n    MAX(skus.as400_data.style) as style,\n    MAX(skus.as400_data.vendor_name1)\
       \ as vendor,\n    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as total_units,\n    SUM(fs.price_extended) as total_revenue,\n\
-      \    SAFE_DIVIDE(SUM(fs.price_extended), NULLIF(SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END), 0)) as avg_price,\n\
+      \    SUM(fs.quantity) as total_units,\n    SUM(fs.price_extended) as total_revenue,\n\
+      \    SAFE_DIVIDE(SUM(fs.price_extended), NULLIF(SUM(fs.quantity), 0)) as avg_price,\n\
       \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END) as total_margin,\n    RANK()\
-      \ OVER (ORDER BY SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) DESC) as unit_rank,\n    RANK() OVER (ORDER\
+      \ OVER (ORDER BY SUM(fs.quantity) DESC) as unit_rank,\n    RANK() OVER (ORDER\
       \ BY SUM(fs.price_extended) DESC) as revenue_rank\n  FROM `sis-data-marts.warehouse.fct_sales`\
       \ fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
       \  LEFT JOIN `sis-data-marts.warehouse.dim_stores` st ON fs.store_id = st.dim_store_id\n\
@@ -181,9 +181,9 @@ tools:
     statement: "WITH shop_metrics AS (\n  SELECT \n    skus.specialty_shop as shop_id,\n\
       \    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n    COUNT(DISTINCT\
       \ fs.sku_id) as unique_skus,\n    COUNT(DISTINCT fs.transaction_id) as transaction_count,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as total_units,\n    SUM(fs.price_extended) as total_revenue,\n\
+      \    SUM(fs.quantity) as total_units,\n    SUM(fs.price_extended) as total_revenue,\n\
       \    SUM(fs.cogs_extended) as total_cost,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END) as total_margin,\n    SAFE_DIVIDE(SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END), SUM(fs.price_extended)) * 100 as margin_pct,\n    SAFE_DIVIDE(SUM(fs.price_extended),\
-      \ COUNT(DISTINCT fs.transaction_id)) as avg_transaction_value,\n    SAFE_DIVIDE(SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END),\
+      \ COUNT(DISTINCT fs.transaction_id)) as avg_transaction_value,\n    SAFE_DIVIDE(SUM(fs.quantity),\
       \ COUNT(DISTINCT fs.transaction_id)) as avg_units_per_transaction\n  FROM `sis-data-marts.warehouse.fct_sales`\
       \ fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
       \  LEFT JOIN `sis-data-marts.warehouse.dim_stores` st ON fs.store_id = st.dim_store_id\n\
@@ -225,12 +225,12 @@ tools:
       \  WHERE \n inv.oh_units = 0\n  AND skus.as400_data.rate1 = '1-Y5'\n  AND (@store_id\
       \ = 0 OR inv.store_number = @store_id)\n  AND (@shop_id = 0 OR skus.specialty_shop\
       \ = @shop_id OR skus.specialty_shop IS NULL)\n),\nrecent_sales AS (\n  SELECT\
-      \ \n    fs.sku_id,\n    fs.store_id,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as units_sold_30d,\n\
+      \ \n    fs.sku_id,\n    fs.store_id,\n    SUM(fs.quantity) as units_sold_30d,\n\
       \    SUM(fs.price_extended) as revenue_30d\n  FROM `sis-data-marts.warehouse.fct_sales`\
       \ fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
       \  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
       \ 30 DAY)\n    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id)\n  GROUP\
-      \ BY fs.sku_id, fs.store_id\n  HAVING SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) >= @min_sales_30d\n)\n\
+      \ BY fs.sku_id, fs.store_id\n  HAVING SUM(fs.quantity) >= @min_sales_30d\n)\n\
       SELECT \n  oos.sku_number,\n  oos.store_number,\n  rs.units_sold_30d,\n  rs.revenue_30d,\n\
       \  ROUND(rs.units_sold_30d / 30.0, 1) as daily_velocity\nFROM out_of_stock oos\n\
       INNER JOIN recent_sales rs ON oos.sku_number = rs.sku_id AND oos.store_number\
@@ -253,7 +253,7 @@ tools:
       description: Shop ID filter (0 for all)
       default: 0
     statement: "SELECT \n  DATE(fs.transaction_datetime) as sale_date,\n  COUNT(DISTINCT\
-      \ fs.transaction_id) as transaction_count,\n  SUM(CASE \n    WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n    ELSE fs.quantity\n  END) as total_units,\n\
+      \ fs.transaction_id) as transaction_count,\n  SUM(fs.quantity) as total_units,\n\
       \  SUM(fs.price_extended) as total_revenue,\n  SUM(fs.cogs_extended) as total_cost,\n\
       \  ROUND(SUM(CASE \n    WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n    ELSE fs.price_extended - fs.cogs_extended\n  END), 2) as total_margin,\n\
       \  ROUND(SAFE_DIVIDE(SUM(CASE \n    WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n    ELSE fs.price_extended - fs.cogs_extended\n  END), SUM(fs.price_extended))\
@@ -302,7 +302,7 @@ tools:
       \ @min_beginning_inventory\n    AND (@store_id = 0 OR inv.store_number = @store_id)\n\
       \    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop\
       \ IS NULL)\n),\nperiod_sales AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as units_sold,\n    SUM(fs.price_extended) as revenue_sold\n\
+      \    SUM(fs.quantity) as units_sold,\n    SUM(fs.price_extended) as revenue_sold\n\
       \  FROM `sis-data-marts.warehouse.fct_sales` fs\n  WHERE DATE(fs.transaction_datetime)\
       \ >= DATE_SUB(CURRENT_DATE(), INTERVAL CAST(@days_period AS INT64) DAY)\n  GROUP\
       \ BY fs.sku_id, fs.store_id\n),\ncurrent_inventory AS (\n  SELECT \n    inv.sku_number,\n\
@@ -365,7 +365,7 @@ tools:
       \ DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY) \n       \
       \      THEN fs.daily_units ELSE 0 END) as units_90d,\n    STDDEV(daily_units)\
       \ as sales_volatility\n  FROM (\n    SELECT \n      sku_id,\n      store_id,\n\
-      \      DATE(transaction_datetime) as sale_date,\n      SUM(CASE \n        WHEN price_extended < 0 THEN -ABS(quantity)\n        ELSE quantity\n      END) as daily_units\n\
+      \      DATE(transaction_datetime) as sale_date,\n      SUM(quantity) as daily_units\n\
       \    FROM `sis-data-marts.warehouse.fct_sales`\n    WHERE DATE(transaction_datetime)\
       \ >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)\n    GROUP BY sku_id, store_id,\
       \ sale_date\n  ) fs\n  GROUP BY fs.sku_id, fs.store_id\n),\nrisk_scoring AS\
@@ -433,7 +433,7 @@ tools:
       \ = @store_id)\n  AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop\
       \ IS NULL)\n),\nsales_velocity AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
       \    SUM(CASE WHEN DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(),\
-      \ INTERVAL 90 DAY) \n             THEN CASE \n               WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n               ELSE fs.quantity\n             END ELSE 0 END) as units_sold_90d\n\
+      \ INTERVAL 90 DAY) \n             THEN fs.quantity ELSE 0 END) as units_sold_90d\n\
       \  FROM `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  WHERE DATE(fs.transaction_datetime)\
       \ >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)\n    AND (@shop_id = 0 OR skus.specialty_shop\
@@ -475,8 +475,8 @@ tools:
     statement: "WITH store1_sales AS (\n  SELECT \n    fs.sku_id,\n    MAX(skus.as400_data.sku_description)\
       \ as product_name,\n    MAX(skus.as400_data.style) as style,\n    MAX(skus.as400_data.vendor_name1)\
       \ as vendor,\n    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as store1_units,\n    SUM(fs.price_extended) as store1_revenue,\n\
-      \    ROUND(AVG(fs.price_extended / NULLIF(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END, 0)), 2) as store1_avg_price,\n\
+      \    SUM(fs.quantity) as store1_units,\n    SUM(fs.price_extended) as store1_revenue,\n\
+      \    ROUND(AVG(fs.price_extended / NULLIF(fs.quantity, 0)), 2) as store1_avg_price,\n\
       \    ROUND(SAFE_DIVIDE(SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END), SUM(fs.price_extended))\
       \ * 100, 1) as store1_margin_pct,\n    RANK() OVER (ORDER BY SUM(fs.price_extended)\
       \ DESC) as store1_rank\n  FROM `sis-data-marts.warehouse.fct_sales` fs\n  LEFT\
@@ -484,9 +484,9 @@ tools:
       \  WHERE fs.store_id = @store1_id\n    AND DATE(fs.transaction_datetime) >=\
       \ DATE_SUB(CURRENT_DATE(), INTERVAL CAST(@days_back AS INT64) DAY)\n    AND\
       \ (@shop_id = 0 OR skus.specialty_shop = @shop_id)\n  GROUP BY fs.sku_id\n),\n\
-      store2_sales AS (\n  SELECT \n    fs.sku_id,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as store2_units,\n\
+      store2_sales AS (\n  SELECT \n    fs.sku_id,\n    SUM(fs.quantity) as store2_units,\n\
       \    SUM(fs.price_extended) as store2_revenue,\n    ROUND(AVG(fs.price_extended\
-      \ / NULLIF(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END, 0)), 2) as store2_avg_price,\n    ROUND(SAFE_DIVIDE(SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END), SUM(fs.price_extended)) * 100, 1) as store2_margin_pct,\n\
+      \ / NULLIF(fs.quantity, 0)), 2) as store2_avg_price,\n    ROUND(SAFE_DIVIDE(SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END), SUM(fs.price_extended)) * 100, 1) as store2_margin_pct,\n\
       \    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store2_rank\n  FROM\
       \ `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  WHERE fs.store_id = @store2_id\n  \
@@ -549,8 +549,8 @@ tools:
       \ = skus.dim_sku_id\n  WHERE oh.oh_units = 0\n    AND (@store_id = 0 OR oh.store_number\
       \ = @store_id)\n    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop\
       \ IS NULL)\n),\nhistorical_sales AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
-      \    AVG(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as avg_daily_sales,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as total_units_sold,\n\
-      \    AVG(fs.price_extended / NULLIF(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END, 0)) as avg_selling_price,\n\
+      \    AVG(fs.quantity) as avg_daily_sales,\n    SUM(fs.quantity) as total_units_sold,\n\
+      \    AVG(fs.price_extended / NULLIF(fs.quantity, 0)) as avg_selling_price,\n\
       \    COUNT(DISTINCT DATE(fs.transaction_datetime)) as days_with_sales\n  FROM\
       \ `sis-data-marts.warehouse.fct_sales` fs\n  WHERE DATE(fs.transaction_datetime)\
       \ >= DATE_SUB(CURRENT_DATE(), INTERVAL CAST(@days_back AS INT64) DAY)\n    AND\
@@ -572,6 +572,63 @@ tools:
       \ recent_activity ra ON cs.sku_number = ra.sku_id AND cs.store_number = ra.store_id\n\
       WHERE hs.avg_daily_sales > 0\n  AND ra.days_since_last_sale >= @min_stockouts\n\
       ORDER BY estimated_lost_revenue DESC\nLIMIT @limit\n"
+  get_advanced_carrying_costs:
+    kind: bigquery-sql
+    source: bq-datamarts
+    description: Computes inventory holding costs and highlights expensive overstock
+    parameters:
+    - name: store_id
+      type: integer
+      description: Store ID to filter (0 for all)
+      default: 0
+    - name: carrying_pct
+      type: float
+      description: Annual carrying cost percentage (e.g., 0.25 for 25%)
+      default: 0.25
+    - name: shop_id
+      type: integer
+      description: Shop ID to filter (0 for all)
+      default: 0
+    - name: days_back
+      type: integer
+      description: Days to calculate average inventory
+      default: 90
+    - name: limit
+      type: integer
+      description: Number of items to return
+      default: 9999
+    statement: "WITH inventory_metrics AS (\n  SELECT \n    oh.sku_number,\n    oh.store_number,\n\
+      \    COALESCE(skus.as400_data.sku_description, 'Unknown') as product_name,\n\
+      \    COALESCE(skus.as400_data.style, '') as style,\n    COALESCE(skus.as400_data.vendor_name1,\
+      \ '') as vendor,\n    oh.oh_units as current_units,\n    oh.cost_extension as\
+      \ current_cost_value,\n    oh.retail_extension as current_retail_value,\n  \
+      \  COALESCE(skus.specialty_shop, 0) as shop_id,\n    COALESCE(skus.as400_data.specialty_shop_description,\
+      \ '') as shop_name\n  FROM `sis-data-marts.data_marts.mart_current_on_hand`\
+      \ oh\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON oh.sku_number\
+      \ = skus.dim_sku_id\n  WHERE oh.oh_units > 0\n    AND (@store_id = 0 OR oh.store_number\
+      \ = @store_id)\n    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop\
+      \ IS NULL)\n),\nsales_velocity AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
+      \    SUM(fs.quantity) as units_sold,\n    AVG(fs.quantity) as avg_daily_sales\n\
+      \  FROM `sis-data-marts.warehouse.fct_sales` fs\n  WHERE DATE(fs.transaction_datetime)\
+      \ >= DATE_SUB(CURRENT_DATE(), INTERVAL CAST(@days_back AS INT64) DAY)\n  GROUP\
+      \ BY fs.sku_id, fs.store_id\n)\nSELECT \n  im.sku_number,\n  im.product_name,\n\
+      \  im.style,\n  im.vendor,\n  im.shop_name,\n  im.current_units,\n  ROUND(im.current_cost_value,\
+      \ 2) as inventory_cost,\n  ROUND(im.current_cost_value * CAST(@carrying_pct\
+      \ AS FLOAT64) / 365 * CAST(@days_back AS FLOAT64), 2) as period_carrying_cost,\n\
+      \  ROUND(im.current_cost_value * CAST(@carrying_pct AS FLOAT64), 2) as annual_carrying_cost,\n\
+      \  COALESCE(sv.units_sold, 0) as units_sold_period,\n  CASE \n    WHEN COALESCE(sv.avg_daily_sales,\
+      \ 0) > 0 \n    THEN ROUND(im.current_units / sv.avg_daily_sales, 1)\n    ELSE\
+      \ 999 \n  END as days_of_supply,\n  ROUND((im.current_retail_value - im.current_cost_value)\
+      \ / NULLIF(im.current_retail_value, 0) * 100, 1) as margin_pct,\n  CASE\n  \
+      \  WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 180 THEN 'Excess\
+      \ Stock'\n    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 90 THEN\
+      \ 'Overstock'\n    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 30\
+      \ THEN 'Normal'\n    ELSE 'Low Stock'\n  END as inventory_status,\n  CASE WHEN\
+      \ sv.units_sold > 0 THEN ROUND(im.current_cost_value / sv.units_sold * CAST(@carrying_pct\
+      \ AS FLOAT64), 2) ELSE NULL END as cost_per_unit_sold\nFROM inventory_metrics\
+      \ im\nLEFT JOIN sales_velocity sv ON im.sku_number = sv.sku_id AND im.store_number\
+      \ = sv.store_id\nWHERE im.current_cost_value > 0\nORDER BY annual_carrying_cost\
+      \ DESC\nLIMIT @limit\n"
   get_advanced_gmroi_performance:
     kind: bigquery-sql
     source: bq-warehouse
@@ -600,7 +657,7 @@ tools:
     statement: "WITH sales_metrics AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
       \    MAX(skus.as400_data.sku_description) as product_name,\n    MAX(skus.as400_data.style)\
       \ as style,\n    MAX(skus.as400_data.vendor_name1) as vendor,\n    MAX(skus.as400_data.specialty_shop_description)\
-      \ as shop_name,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as units_sold,\n    SUM(fs.price_extended)\
+      \ as shop_name,\n    SUM(fs.quantity) as units_sold,\n    SUM(fs.price_extended)\
       \ as total_revenue,\n    SUM(fs.cogs_extended) as total_cogs,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END) as gross_margin,\n    COUNT(DISTINCT fs.transaction_id)\
       \ as transaction_count\n  FROM `sis-data-marts.warehouse.fct_sales` fs\n  LEFT\
       \ JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
@@ -629,7 +686,71 @@ tools:
       \ = ii.store_number\nWHERE ii.avg_inventory_cost > 0\n  AND (sm.gross_margin\
       \ * (365.0 / CAST(@days_back AS FLOAT64))) / ii.avg_inventory_cost >= CAST(@min_gmroi\
       \ AS FLOAT64)\nORDER BY gmroi DESC\nLIMIT @limit\n"
-  
+  get_advanced_vendor_metrics:
+    kind: bigquery-sql
+    source: bq-warehouse
+    description: Analyzes vendor reliability, quality, and return rates
+    parameters:
+    - name: vendor_name
+      type: string
+      description: Vendor name filter (empty for all)
+      default: ''
+    - name: store_id
+      type: integer
+      description: Store ID to filter (0 for all)
+      default: 0
+    - name: days_back
+      type: integer
+      description: Number of days to analyze
+      default: 90
+    - name: limit
+      type: integer
+      description: Number of vendors to return
+      default: 25
+    statement: "WITH vendor_sales AS (\n  SELECT \n    skus.as400_data.vendor_name1\
+      \ as vendor,\n    COUNT(DISTINCT fs.sku_id) as sku_count,\n    COUNT(DISTINCT\
+      \ fs.transaction_id) as transaction_count,\n    SUM(fs.quantity) as units_sold,\n\
+      \    SUM(fs.price_extended) as total_revenue,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END)\
+      \ as gross_margin,\n    AVG(CASE \n      WHEN fs.price_extended < 0 THEN (fs.price_extended - (-ABS(fs.cogs_extended))) / NULLIF(fs.price_extended, 0)\n      ELSE (fs.price_extended - fs.cogs_extended) / NULLIF(fs.price_extended, 0)\n    END) * 100 as avg_margin_pct\n  FROM `sis-data-marts.warehouse.fct_sales` fs\n\
+      \  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
+      \  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
+      \ CAST(@days_back AS INT64) DAY)\n    AND (@store_id = 0 OR fs.store_id = @store_id)\n\
+      \    AND (@vendor_name = '' OR UPPER(skus.as400_data.vendor_name1) LIKE CONCAT('%',\
+      \ UPPER(@vendor_name), '%'))\n  GROUP BY skus.as400_data.vendor_name1\n),\n\
+      vendor_inventory AS (\n  SELECT \n    skus.as400_data.vendor_name1 as vendor,\n\
+      \    COUNT(DISTINCT oh.sku_number) as inventory_skus,\n    SUM(oh.oh_units)\
+      \ as total_units_on_hand,\n    SUM(oh.cost_extension) as total_inventory_value,\n\
+      \    AVG(oh.oh_units) as avg_units_per_sku\n  FROM `sis-data-marts.data_marts.mart_current_on_hand`\
+      \ oh\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON oh.sku_number\
+      \ = skus.dim_sku_id\n  WHERE oh.oh_units > 0\n    AND (@store_id = 0 OR oh.store_number\
+      \ = @store_id)\n  GROUP BY skus.as400_data.vendor_name1\n),\nvendor_performance\
+      \ AS (\n  SELECT \n    skus.as400_data.vendor_name1 as vendor,\n    COUNT(DISTINCT\
+      \ CASE WHEN fs.quantity < 0 THEN fs.transaction_id END) as return_transactions,\n\
+      \    SUM(CASE WHEN fs.quantity < 0 THEN ABS(fs.quantity) ELSE 0 END) as returned_units,\n\
+      \    COUNT(DISTINCT DATE(fs.transaction_datetime)) as active_days\n  FROM `sis-data-marts.warehouse.fct_sales`\
+      \ fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
+      \  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
+      \ CAST(@days_back AS INT64) DAY)\n    AND (@store_id = 0 OR fs.store_id = @store_id)\n\
+      \  GROUP BY skus.as400_data.vendor_name1\n)\nSELECT \n  COALESCE(vs.vendor,\
+      \ vi.vendor, vp.vendor) as vendor_name,\n  COALESCE(vs.sku_count, 0) as active_skus,\n\
+      \  COALESCE(vi.inventory_skus, 0) as stocked_skus,\n  COALESCE(vs.units_sold,\
+      \ 0) as units_sold,\n  ROUND(COALESCE(vs.total_revenue, 0), 2) as revenue,\n\
+      \  ROUND(COALESCE(vs.gross_margin, 0), 2) as gross_margin,\n  ROUND(COALESCE(vs.avg_margin_pct,\
+      \ 0), 1) as avg_margin_pct,\n  ROUND(COALESCE(vi.total_inventory_value, 0),\
+      \ 2) as inventory_investment,\n  ROUND(COALESCE(vp.returned_units, 0) / NULLIF(vs.units_sold,\
+      \ 0) * 100, 2) as return_rate_pct,\n  ROUND(COALESCE(vs.total_revenue, 0) /\
+      \ NULLIF(vi.total_inventory_value, 0), 2) as inventory_turnover,\n  ROUND(COALESCE(vs.gross_margin,\
+      \ 0) / NULLIF(vi.total_inventory_value, 0), 2) as gmroi,\n  COALESCE(vp.active_days,\
+      \ 0) as days_with_sales,\n  ROUND(COALESCE(vs.total_revenue, 0) / NULLIF(vp.active_days,\
+      \ 0), 2) as avg_daily_revenue,\n  CASE\n    WHEN COALESCE(vp.returned_units,\
+      \ 0) / NULLIF(vs.units_sold, 0) > 0.1 THEN 'High Returns'\n    WHEN COALESCE(vs.gross_margin,\
+      \ 0) / NULLIF(vs.total_revenue, 0) < 0.2 THEN 'Low Margin'\n    WHEN COALESCE(vs.total_revenue,\
+      \ 0) / NULLIF(vi.total_inventory_value, 0) < 2 THEN 'Slow Moving'\n    ELSE\
+      \ 'Good'\n  END as vendor_status\nFROM vendor_sales vs\nFULL OUTER JOIN vendor_inventory\
+      \ vi ON vs.vendor = vi.vendor\nFULL OUTER JOIN vendor_performance vp ON COALESCE(vs.vendor,\
+      \ vi.vendor) = vp.vendor\nWHERE COALESCE(vs.vendor, vi.vendor, vp.vendor) IS\
+      \ NOT NULL\n  AND COALESCE(vs.total_revenue, 0) > 0\nORDER BY revenue DESC\n\
+      LIMIT @limit\n"
   get_otb_metrics:
     kind: bigquery-sql
     source: bq-sandbox
@@ -689,7 +810,7 @@ tools:
       description: Number of results to return
       default: 50
     statement: "WITH ty_sales AS (\n  SELECT \n    skus.specialty_shop AS shop_id,\n\
-      \    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END)\
+      \    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n    SUM(fs.quantity)\
       \ AS total_units_ty,\n    SUM(fs.price_extended) AS total_revenue_ty\n  FROM\
       \ `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  WHERE DATE(fs.transaction_datetime)\
@@ -697,7 +818,7 @@ tools:
       \ 0 OR fs.store_id = @store_id)\n    AND (@shop_id = 0 OR skus.specialty_shop\
       \ = @shop_id)\n  GROUP BY shop_id\n),\nly_sales AS (\n  SELECT \n    skus.specialty_shop\
       \ AS shop_id,\n    MAX(skus.as400_data.specialty_shop_description) as shop_name,\n\
-      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) AS total_units_ly,\n    SUM(fs.price_extended) AS total_revenue_ly\n\
+      \    SUM(fs.quantity) AS total_units_ly,\n    SUM(fs.price_extended) AS total_revenue_ly\n\
       \  FROM `sis-data-marts.warehouse.fct_sales` fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus`\
       \ skus ON fs.sku_id = skus.dim_sku_id\n  WHERE DATE(fs.transaction_datetime)\
       \ BETWEEN DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL @days_back\
@@ -714,28 +835,6 @@ tools:
       \ 0) - COALESCE(ly.total_revenue_ly, 0)) DESC) AS variance_rank\nFROM ty_sales\
       \ ty\nFULL OUTER JOIN ly_sales ly ON ty.shop_id = ly.shop_id\nORDER BY variance_rank\n\
       LIMIT @limit\n"
-  get_otb_aware_reorder_recommendations:
-    kind: bigquery-sql
-    source: bq-sandbox
-    description: Generates reorder recommendations with OTB budget constraints, prioritizing critical items within available budget
-    parameters:
-    - name: store_id
-      type: integer
-      description: Store ID to filter (0 for all stores)
-      default: 0
-    - name: shop_id
-      type: integer
-      description: Shop ID to filter (0 for all shops)
-      default: 0
-    - name: min_priority_score
-      type: integer
-      description: Minimum priority score for items to consider (0-100)
-      default: 70
-    - name: days_coverage_target
-      type: integer
-      description: Target days of inventory coverage
-      default: 30
-    statement: "WITH otb_remaining AS (\n  SELECT \n    CAST(shop_id AS INT64) as shop_id,\n    shop_name,\n    CAST(store_id AS INT64) as store_id,\n    store_name,\n    value as otb_remaining\n  FROM `sis-sandbox-463113.OTB.OTB_at_a_glance`\n  WHERE metric_name = 'Monthly OTB remaining'\n    AND date_month = DATE_TRUNC(CURRENT_DATE(), MONTH)\n    AND (@store_id = 0 OR CAST(store_id AS INT64) = @store_id)\n    AND (@shop_id = 0 OR CAST(shop_id AS INT64) = @shop_id)\n),\ninventory_metrics AS (\n  SELECT \n    inv.sku_number,\n    inv.store_number,\n    COALESCE(skus.as400_data.sku_description, '') as product_name,\n    COALESCE(skus.as400_data.style, '') as style,\n    COALESCE(skus.as400_data.vendor_name1, '') as vendor,\n    inv.cost_extension / NULLIF(inv.oh_units, 0) as unit_cost,\n    inv.oh_units as current_on_hand,\n    inv.cost_extension as current_cost_value,\n    COALESCE(skus.specialty_shop, 0) as shop_id,\n    COALESCE(skus.as400_data.specialty_shop_description, '') as shop_name\n  FROM `sis-data-marts.data_marts.mart_current_on_hand` inv\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON inv.sku_number = skus.dim_sku_id\n  WHERE 1=1\n    AND (@store_id = 0 OR inv.store_number = @store_id)\n    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop IS NULL)\n),\nsales_patterns AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n    SUM(CASE WHEN DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) \n             THEN fs.daily_units ELSE 0 END) as units_7d,\n    SUM(CASE WHEN DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) \n             THEN fs.daily_units ELSE 0 END) as units_30d\n  FROM (\n    SELECT \n      sku_id,\n      store_id,\n      DATE(transaction_datetime) as sale_date,\n      SUM(CASE \n        WHEN price_extended < 0 THEN -ABS(quantity)\n        ELSE quantity\n      END) as daily_units\n    FROM `sis-data-marts.warehouse.fct_sales`\n    WHERE DATE(transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)\n    GROUP BY sku_id, store_id, sale_date\n  ) fs\n  GROUP BY fs.sku_id, fs.store_id\n),\nreorder_needs AS (\n  SELECT \n    im.*,\n    COALESCE(sp.units_7d, 0) as units_sold_7d,\n    COALESCE(sp.units_30d, 0) as units_sold_30d,\n    CASE \n      WHEN COALESCE(sp.units_7d, 0) = 0 THEN 999\n      ELSE ROUND(im.current_on_hand / (sp.units_7d / 7.0), 1)\n    END as days_of_supply,\n    -- Calculate priority score\n    CASE\n      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN 100\n      WHEN im.current_on_hand > 0 AND im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 3 THEN \n        80 + (20 * (1 - im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) / 3))\n      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN \n        60 + (20 * (1 - (im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) - 3) / 4))\n      ELSE 0\n    END as priority_score,\n    -- Calculate reorder quantity\n    CASE\n      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN \n        CEIL(sp.units_30d / 30.0 * @days_coverage_target)\n      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN \n        CEIL(sp.units_30d / 30.0 * @days_coverage_target - im.current_on_hand)\n      ELSE 0\n    END as suggested_reorder_qty,\n    -- Calculate reorder cost\n    CASE\n      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN \n        CEIL(sp.units_30d / 30.0 * @days_coverage_target) * im.unit_cost\n      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN \n        CEIL(sp.units_30d / 30.0 * @days_coverage_target - im.current_on_hand) * im.unit_cost\n      ELSE 0\n    END as reorder_cost\n  FROM inventory_metrics im\n  LEFT JOIN sales_patterns sp ON im.sku_number = sp.sku_id AND im.store_number = sp.store_id\n),\nranked_reorders AS (\n  SELECT \n    rn.*,\n    otb.otb_remaining,\n    ROW_NUMBER() OVER (\n      PARTITION BY rn.shop_id, rn.store_number \n      ORDER BY rn.priority_score DESC, rn.reorder_cost DESC\n    ) as priority_rank,\n    SUM(rn.reorder_cost) OVER (\n      PARTITION BY rn.shop_id, rn.store_number \n      ORDER BY rn.priority_score DESC, rn.reorder_cost DESC \n      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n    ) as cumulative_cost\n  FROM reorder_needs rn\n  LEFT JOIN otb_remaining otb \n    ON rn.shop_id = otb.shop_id \n    AND rn.store_number = otb.store_id\n  WHERE rn.suggested_reorder_qty > 0\n    AND rn.priority_score >= @min_priority_score\n)\nSELECT \n  sku_number,\n  store_number,\n  product_name,\n  style,\n  vendor,\n  shop_name,\n  current_on_hand,\n  units_sold_7d,\n  units_sold_30d,\n  days_of_supply,\n  priority_score,\n  suggested_reorder_qty,\n  ROUND(unit_cost, 2) as unit_cost,\n  ROUND(reorder_cost, 2) as reorder_cost,\n  ROUND(otb_remaining, 2) as otb_remaining,\n  ROUND(cumulative_cost, 2) as cumulative_cost,\n  CASE \n    WHEN cumulative_cost <= COALESCE(otb_remaining, 0) THEN 'Approved - Within Budget'\n    WHEN cumulative_cost - reorder_cost < COALESCE(otb_remaining, 0) AND \n         cumulative_cost > COALESCE(otb_remaining, 0) THEN 'Partial - Exceeds Budget'\n    ELSE 'Deferred - No Budget'\n  END as otb_status,\n  CASE \n    WHEN cumulative_cost <= COALESCE(otb_remaining, 0) THEN suggested_reorder_qty\n    WHEN cumulative_cost - reorder_cost < COALESCE(otb_remaining, 0) THEN \n      FLOOR((COALESCE(otb_remaining, 0) - (cumulative_cost - reorder_cost)) / unit_cost)\n    ELSE 0\n  END as approved_reorder_qty,\n  CASE \n    WHEN cumulative_cost <= COALESCE(otb_remaining, 0) THEN reorder_cost\n    WHEN cumulative_cost - reorder_cost < COALESCE(otb_remaining, 0) THEN \n      COALESCE(otb_remaining, 0) - (cumulative_cost - reorder_cost)\n    ELSE 0\n  END as approved_reorder_cost,\n  priority_rank\nFROM ranked_reorders\nORDER BY shop_id, store_number, priority_score DESC, reorder_cost DESC\n"
   get_margin_variance_report:
     kind: bigquery-sql
     source: bq-warehouse
@@ -803,8 +902,9 @@ toolsets:
   - get_overstock_items
   - get_comparison_analysis
   - get_advanced_stockout_analysis
+  - get_advanced_carrying_costs
   - get_advanced_gmroi_performance
+  - get_advanced_vendor_metrics
   - get_otb_metrics
   - get_sales_variance_analysis
   - get_margin_variance_report
-  - get_otb_aware_reorder_recommendations

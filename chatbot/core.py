@@ -4,6 +4,8 @@ import logging
 import pandas as pd
 import os
 import json
+import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 from .config import Config, get_store_mappings, get_shop_mappings, get_available_models
 from .api_clients import APIClient 
@@ -46,12 +48,17 @@ except ImportError:
             async def _request(self, method: str, path: str, **kwargs):
                 raise NotImplementedError("MCP Toolbox not available")
 
+# Import asyncio for proper session management
+import asyncio
+import aiohttp
+
 # Working Toolbox Client - No authentication needed
 class AuthenticatedToolboxClient(ToolboxSyncClient):
     """Extended ToolboxSyncClient - no auth needed since Cloud Run allows unauthenticated access"""
     
     def __init__(self, base_url: str):
         self.toolbox_available = TOOLBOX_AVAILABLE
+        self._session = None
         
         if not TOOLBOX_AVAILABLE:
             logger.error("Cannot initialize AuthenticatedToolboxClient - ToolboxSyncClient not available")
@@ -80,6 +87,15 @@ class AuthenticatedToolboxClient(ToolboxSyncClient):
         except Exception as e:
             logger.error(f"Request failed: {method} {path} - Error: {e}")
             raise
+    
+    def __del__(self):
+        """Cleanup any open sessions"""
+        if hasattr(self, '_session') and self._session:
+            try:
+                asyncio.create_task(self._session.close())
+            except RuntimeError:
+                # If no event loop is running, we can't close it async
+                pass
 
 class SuperGeminiRetailChatbot:
     def __init__(self, config):
@@ -119,6 +135,14 @@ class SuperGeminiRetailChatbot:
         else:
             logger.warning("⚠️ MCP Toolbox not available - some features will be disabled")
             logger.info("📝 To enable MCP features, install: pip install toolbox_core")
+    
+    def cleanup(self):
+        """Cleanup resources, especially MCP toolbox connections"""
+        if self.toolbox and hasattr(self.toolbox, '__del__'):
+            try:
+                self.toolbox.__del__()
+            except Exception as e:
+                logger.error(f"Error cleaning up toolbox: {e}")
 
     def _initialize_toolbox(self):
         """Initialize MCP Toolbox client with authentication if on Cloud Run"""
@@ -187,7 +211,7 @@ class SuperGeminiRetailChatbot:
             self.tools = {}
             raise  # Re-raise so the caller can handle it
 
-    def _map_query_to_tool(self, query: str) -> Tuple[str, Dict[str, Any]]:
+    def _map_query_to_tool(self, query: str, snapshot_date: str = None) -> Tuple[str, Dict[str, Any]]:
         """
         Map user queries to appropriate MCP tools and extract parameters.
         This replaces the complex intent extraction and SQL generation logic.
@@ -270,6 +294,12 @@ class SuperGeminiRetailChatbot:
             ('versus',): 'get_comparison_analysis',
             ('vs',): 'get_comparison_analysis',
             ('comparison',): 'get_comparison_analysis',
+            
+            # Store comparison queries
+            ('compare', 'top', 'items'): 'get_top_selling_item_comparison',
+            ('compare', 'top', 'sellers'): 'get_top_selling_item_comparison',
+            ('compare', 'best', 'sellers'): 'get_top_selling_item_comparison',
+            ('store', 'comparison'): 'get_top_selling_item_comparison',
         }
         
         # Find matching tool
@@ -284,13 +314,108 @@ class SuperGeminiRetailChatbot:
             selected_tool = 'get_top_selling_items'
             logger.info(f"No specific tool mapping found for query '{query}', defaulting to {selected_tool}")
         
-        # Extract parameters based on the query
-        parameters = self._extract_parameters_from_query(query, selected_tool)
+        # Extract parameters based on the query (pass snapshot_date if provided)
+        parameters = self._extract_parameters_from_query(query, selected_tool, snapshot_date)
         
         logger.info(f"Mapped query '{query}' to tool '{selected_tool}' with parameters: {parameters}")
         return selected_tool, parameters
+    
+    def _normalize_date_format(self, date_str: str) -> str:
+        """Convert various date formats to ISO format (YYYY-MM-DD) expected by BigQuery"""
+        if not date_str:
+            return date_str
+        
+        # If already in correct format, return as is
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+            return date_str
+        
+        # Try common date formats
+        date_formats = [
+            '%m/%d/%Y',      # US format: 7/31/2025
+            '%d/%m/%Y',      # EU format: 31/07/2025
+            '%Y/%m/%d',      # Alternative: 2025/07/31
+            '%m-%d-%Y',      # With dashes: 07-31-2025
+            '%d-%m-%Y',      # EU with dashes: 31-07-2025
+            '%B %d, %Y',     # Text: July 31, 2025
+            '%b %d, %Y',     # Short text: Jul 31, 2025
+        ]
+        
+        for fmt in date_formats:
+            try:
+                dt = datetime.strptime(date_str, fmt)
+                normalized = dt.strftime('%Y-%m-%d')
+                logger.info(f"Normalized date from '{date_str}' to '{normalized}' using format '{fmt}'")
+                return normalized
+            except ValueError:
+                continue
+        
+        logger.warning(f"Could not parse date '{date_str}', using as-is")
+        return date_str
 
-    def _extract_parameters_from_query(self, query: str, tool_name: str) -> Dict[str, Any]:
+    def _get_tool_accepted_parameters(self, tool_name: str) -> list:
+        """Get list of parameters that a specific tool accepts"""
+        if not self.toolbox_enabled or tool_name not in self.tools:
+            return []
+        
+        # Hardcoded parameter lists for tools based on tools.yaml
+        tool_parameters = {
+            'get_top_selling_items': ['store_id', 'shop_id', 'year_filter', 'days_back', 'limit'],
+            'get_top_selling_item_comparison': ['store1_id', 'store2_id', 'shop_id', 'days_back', 'limit'],
+            'get_units_vs_dollars_comparison': ['store_id', 'shop_id', 'days_back', 'limit'],
+            'get_shop_performance': ['shop_id', 'store_id', 'days_back', 'limit'],
+            'get_sell_through_rates': ['store_id', 'shop_id', 'days_period', 'min_beginning_inventory', 'snapshot_date'],
+            'get_time_period_comparison': ['store_id', 'shop_id', 'current_days', 'compare_days', 'limit'],
+            'get_inventory_status': ['store_id', 'shop_id', 'min_priority_score', 'include_overstocked', 'limit'],
+            'get_1Y_out_of_stock_items': ['store_id', 'shop_id', 'min_sales_30d', 'limit'],
+            'get_sales_trends': ['store_id', 'shop_id', 'days_back', 'granularity'],
+            'get_top_margin_items': ['store_id', 'shop_id', 'days_back', 'min_revenue', 'limit'],
+            'get_overstock_items': ['store_id', 'shop_id', 'days_supply_threshold', 'limit'],
+            'get_comparison_analysis': ['store1_id', 'store2_id'],
+            'get_advanced_inventory_turnover': ['store_id', 'shop_id', 'days_back', 'limit'],
+            'get_advanced_stockout_analysis': ['store_id', 'shop_id', 'min_stockouts', 'days_back', 'limit'],
+            'get_advanced_carrying_costs': ['store_id', 'carrying_pct', 'shop_id', 'days_back', 'limit'],
+            'get_advanced_gmroi_performance': ['store_id', 'shop_id', 'days_back', 'limit'],
+            'get_advanced_vendor_metrics': ['store_id', 'shop_id', 'vendor_name', 'days_back', 'limit'],
+            'get_advanced_forecast_accuracy': ['store_id', 'shop_id', 'periods_back'],
+            'get_otb_metrics': ['shop_id', 'store_id', 'metric_name', 'year'],
+            'get_sales_variance_analysis': ['store_id', 'shop_id', 'period', 'days_back', 'limit'],
+            'get_margin_variance_report': ['vendor_name', 'shop_id', 'period', 'min_margin_var', 'limit']
+        }
+        
+        if tool_name in tool_parameters:
+            return tool_parameters[tool_name]
+        
+        try:
+            # Fallback - check if tool has __code__ attribute
+            tool = self.tools[tool_name]
+            if hasattr(tool, '__code__'):
+                import inspect
+                return list(inspect.signature(tool).parameters.keys())
+        except Exception as e:
+            logger.warning(f"Could not get parameters for tool {tool_name}: {e}")
+        
+        return []
+    
+    def _filter_parameters_for_tool(self, params: Dict[str, Any], tool_name: str) -> Dict[str, Any]:
+        """Filter parameters to only include those accepted by the tool"""
+        accepted_params = self._get_tool_accepted_parameters(tool_name)
+        
+        if not accepted_params:
+            # If we can't determine accepted parameters, return all
+            logger.warning(f"Could not determine accepted parameters for {tool_name}, using all parameters")
+            return params
+        
+        # Filter to only accepted parameters
+        filtered = {k: v for k, v in params.items() if k in accepted_params}
+        
+        # Log if we're removing any parameters
+        removed = set(params.keys()) - set(filtered.keys())
+        if removed:
+            logger.info(f"Removing parameters not accepted by {tool_name}: {removed}")
+        
+        return filtered
+
+    def _extract_parameters_from_query(self, query: str, tool_name: str, snapshot_date: str = None) -> Dict[str, Any]:
         """Extract parameters from user query - only include explicitly mentioned parameters"""
         query_lower = query.lower()
         
@@ -411,6 +536,9 @@ class SuperGeminiRetailChatbot:
                 params['risk_level'] = 'low'
             if limit is not None:
                 params['limit'] = limit
+            # Add snapshot_date for inventory tools
+            if snapshot_date:
+                params['snapshot_date'] = snapshot_date
             return params
         
         elif tool_name == 'get_out_of_stock_items':
@@ -433,6 +561,9 @@ class SuperGeminiRetailChatbot:
             if limit is not None:
                 params['limit'] = limit
             # Let MCP use its own default for days_supply_threshold
+            # Add snapshot_date for inventory tools
+            if snapshot_date:
+                params['snapshot_date'] = snapshot_date
             return params
         
         elif tool_name == 'get_sales_trends':
@@ -493,9 +624,9 @@ class SuperGeminiRetailChatbot:
             
             # If only one store specified, don't do comparison
             if store1_id > 0 and store2_id == 0:
-                # Switch to top selling items for single store
-                logger.info(f"Only one store specified ({store1_id}), switching to top selling items")
-                return 'get_top_selling_items', {'store_id': store1_id}
+                # Switch to top selling items for single store - this should be handled at calling level
+                logger.info(f"Only one store specified ({store1_id}), using comparison with store2_id=0")
+                store2_id = 0  # Set to 0 to handle in the comparison logic
                 
             logger.info(f"Extracted store IDs: store1={store1_id}, store2={store2_id} from query: {query_lower}")
             
@@ -507,9 +638,8 @@ class SuperGeminiRetailChatbot:
                     comparison_limit = int(limit_match.group(1))
             
             params = {
-                'comparison_type': 'store',  # Keep this as it's fundamental to the comparison
-                'entity1_id': store1_id,
-                'entity2_id': store2_id
+                'store1_id': store1_id,
+                'store2_id': store2_id
             }
             if days_back is not None:
                 params['days_back'] = days_back
@@ -600,6 +730,137 @@ class SuperGeminiRetailChatbot:
             # Note: This tool doesn't have a limit parameter
             return params
         
+        elif tool_name == 'get_top_selling_item_comparison':
+            # Extract store IDs for comparison
+            store_pattern = r'store\s+(\d+)'
+            store_matches = re.findall(store_pattern, query_lower)
+            
+            # Initialize store IDs
+            store1_id = None
+            store2_id = None
+            
+            # Special handling for known store names
+            if 'fargo' in query_lower:
+                store1_id = 64 if store1_id is None else store1_id
+                if store2_id is None and store1_id != 64:
+                    store2_id = 64
+            if 'springfield' in query_lower:
+                if store1_id is None:
+                    store1_id = 78
+                elif store2_id is None and store1_id != 78:
+                    store2_id = 78
+            
+            # Extract numeric store IDs
+            if len(store_matches) >= 1 and store1_id is None:
+                store1_id = int(store_matches[0])
+            if len(store_matches) >= 2 and store2_id is None:
+                store2_id = int(store_matches[1])
+            
+            # Build parameters
+            params = {}
+            if store1_id is not None:
+                params['store1_id'] = store1_id
+            if store2_id is not None:
+                params['store2_id'] = store2_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            
+            logger.info(f"Extracted parameters for top_selling_item_comparison: {params}")
+            return params
+        
+        elif tool_name == 'get_1Y_out_of_stock_items':
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if limit is not None:
+                params['limit'] = limit
+            return params
+        
+        # Handle advanced tools with specific parameter requirements
+        elif tool_name == 'get_advanced_vendor_metrics':
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            # Note: This tool doesn't support shop_id parameter
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            # Snapshot date will be filtered by _filter_parameters_for_tool if not accepted
+            if snapshot_date:
+                params['snapshot_date'] = snapshot_date
+            return params
+        
+        elif tool_name == 'get_advanced_forecast_accuracy':
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            # Note: This tool doesn't support limit parameter
+            # Snapshot date will be filtered by _filter_parameters_for_tool if not accepted
+            if snapshot_date:
+                params['snapshot_date'] = snapshot_date
+            return params
+        
+        # Handle OTB metrics tool specifically
+        elif tool_name == 'get_otb_metrics':
+            params = {}
+            
+            # Always include shop_id (use empty string for "all")
+            if shop_id is not None and shop_id > 0:
+                params['shop_id'] = str(shop_id)
+            else:
+                params['shop_id'] = ''  # Empty string for all shops
+            
+            # Extract store_id - use actual store ID or empty for all
+            if store_id is not None and store_id > 0:
+                params['store_id'] = str(store_id)
+            else:
+                params['store_id'] = ''  # Empty string for all stores
+            
+            # Always include metric_name (use empty string for "all")
+            if 'otb goal' in query_lower:
+                params['metric_name'] = 'OTB Goal'
+            elif 'otb ordered' in query_lower:
+                params['metric_name'] = 'OTB Ordered'
+            elif 'otb remaining' in query_lower:
+                params['metric_name'] = 'OTB Remaining'
+            else:
+                params['metric_name'] = ''  # Empty string for all metrics
+            
+            # Extract year - if not specified, use current year
+            if year_filter is not None:
+                params['year'] = year_filter
+            else:
+                # Default to current year for OTB metrics
+                from datetime import datetime
+                params['year'] = datetime.now().year
+            
+            return params
+        
+        # Handle other advanced tools
+        elif tool_name.startswith('get_advanced_'):
+            params = {}
+            if store_id is not None:
+                params['store_id'] = store_id
+            if shop_id is not None:
+                params['shop_id'] = shop_id
+            if days_back is not None:
+                params['days_back'] = days_back
+            if limit is not None:
+                params['limit'] = limit
+            # Snapshot date will be filtered by _filter_parameters_for_tool if not accepted
+            if snapshot_date:
+                params['snapshot_date'] = snapshot_date
+            return params
+        
         # Fallback for unknown tools - only include explicitly set parameters
         params = {}
         if store_id is not None:
@@ -610,7 +871,7 @@ class SuperGeminiRetailChatbot:
             params['limit'] = limit
         return params
 
-    def chat(self, user_query, model_name=None, user_id=None, session_id=None, mcp_tool=None):
+    def chat(self, user_query, model_name=None, user_id=None, session_id=None, mcp_tool=None, snapshot_date=None):
         """
         Process user query using ONLY MCP Toolbox tools with automatic summary generation.
         """
@@ -627,15 +888,23 @@ class SuperGeminiRetailChatbot:
         execution_times = {}
 
         logger.info(f"Processing query: {user_query} (Explicit tool: {mcp_tool})")
+        if snapshot_date:
+            # Normalize the date format to ISO (YYYY-MM-DD)
+            original_date = snapshot_date
+            snapshot_date = self._normalize_date_format(snapshot_date)
+            if original_date != snapshot_date:
+                logger.info(f"📅 Normalized snapshot date from '{original_date}' to '{snapshot_date}'")
+            else:
+                logger.info(f"📅 Snapshot date provided: {snapshot_date}")
 
         # Use explicit tool if provided, otherwise map query to appropriate MCP tool
         if mcp_tool and mcp_tool in self.tools:
             tool_name = mcp_tool
-            parameters = self._extract_parameters_from_query(user_query, tool_name)
+            parameters = self._extract_parameters_from_query(user_query, tool_name, snapshot_date)
             logger.info(f"Using explicitly selected tool: {tool_name}")
         else:
             # Map query to appropriate MCP tool
-            tool_name, parameters = self._map_query_to_tool(user_query)
+            tool_name, parameters = self._map_query_to_tool(user_query, snapshot_date)
         
         if tool_name not in self.tools:
             available_tools = list(self.tools.keys())
@@ -657,8 +926,80 @@ class SuperGeminiRetailChatbot:
             # Log parameters for debugging
             logger.info(f"Calling MCP tool '{tool_name}' with parameters: {json.dumps(parameters, indent=2)}")
             
-            # Call the tool with extracted parameters
-            result = tool(**parameters)
+            # Special logging for snapshot_date
+            if 'snapshot_date' in parameters:
+                logger.info(f"🗓️ SNAPSHOT DATE PASSED: {parameters['snapshot_date']}")
+            else:
+                logger.info(f"📅 NO SNAPSHOT DATE in parameters for tool: {tool_name}")
+            
+            # Filter parameters to only include those accepted by the tool
+            parameters = self._filter_parameters_for_tool(parameters, tool_name)
+            logger.info(f"Filtered parameters for {tool_name}: {json.dumps(parameters, indent=2)}")
+            
+            # Call the tool with extracted parameters with retry logic
+            max_retries = 3
+            retry_delay = 1  # seconds
+            result = None
+            
+            for attempt in range(max_retries):
+                try:
+                    result = tool(**parameters)
+                    break  # Success! Exit the retry loop
+                except Exception as tool_error:
+                    error_msg = str(tool_error)
+                    
+                    # Check for 503 Service Unavailable errors
+                    if '503' in error_msg and 'text/plain' in error_msg:
+                        logger.warning(f"MCP Toolbox server unavailable (503) - attempt {attempt + 1}/{max_retries}: {error_msg}")
+                        
+                        if attempt < max_retries - 1:
+                            # Wait before retrying
+                            logger.info(f"Retrying in {retry_delay} seconds...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        else:
+                            # Final attempt failed
+                            logger.error(f"MCP Toolbox server unavailable after {max_retries} attempts")
+                            return {
+                                'success': False,
+                                'error': 'MCP Toolbox server is temporarily unavailable. Please try again later.',
+                                'technical_error': error_msg,
+                                'tool_name': tool_name,
+                                'parameters': parameters,
+                                'query_id': query_id,
+                                'suggestion': 'The MCP Toolbox server appears to be down. Please contact support if this persists.'
+                            }
+                    
+                    # Check for JSON decode errors
+                    elif 'JSON' in error_msg and 'decode' in error_msg:
+                        logger.error(f"MCP Toolbox response format error: {error_msg}")
+                        # Don't retry JSON errors - they're likely not transient
+                        return {
+                            'success': False,
+                            'error': 'Received unexpected response format from MCP Toolbox.',
+                            'technical_error': error_msg,
+                            'tool_name': tool_name,
+                            'parameters': parameters,
+                            'query_id': query_id,
+                            'suggestion': 'The server returned an invalid response. Please contact support.'
+                        }
+                    
+                    # For other errors, don't retry
+                    else:
+                        raise
+            
+            # Check if we got a result
+            if result is None:
+                logger.error("Failed to get result from MCP tool after all retries")
+                return {
+                    'success': False,
+                    'error': 'Failed to execute MCP tool after multiple attempts',
+                    'tool_name': tool_name,
+                    'parameters': parameters,
+                    'query_id': query_id
+                }
+            
             execution_time = int((time.time() - start_time) * 1000)
             
             # Process the result into DataFrame with smart formatting
@@ -857,6 +1198,10 @@ class SuperGeminiRetailChatbot:
         # Handle string results (JSON format)
         if isinstance(result, str):
             try:
+                # Debug logging for OTB tool
+                if tool_name == 'get_otb_metrics':
+                    logger.info(f"OTB raw string result (first 500 chars): {result[:500]}")
+                
                 # Parse JSON string
                 data = json.loads(result)
                 if isinstance(data, list):
@@ -865,18 +1210,24 @@ class SuperGeminiRetailChatbot:
                     
                     # Basic type conversion for numeric fields
                     for col in df.columns:
-                        if col in ['total_units', 'total_cost', 'transaction_count', 'unique_skus', 'unique_customers', 'store_id', 'shop_id']:
+                        if col in ['total_units', 'total_cost', 'transaction_count', 'unique_skus', 'unique_customers', 
+                                  'store_id', 'shop_id', 'current_oh_units', 'oh_units', 'ending_units', 'beginning_units',
+                                  'units_sold', 'units_sold_30d', 'units_sold_90d', 'units_sold_7d', 'avg_on_hand', 
+                                  'avg_inventory_units', 'current_units', 'total_units_on_hand']:
                             try:
                                 df[col] = pd.to_numeric(df[col])
                             except:
                                 pass
-                        elif col in ['total_revenue', 'total_margin', 'margin_pct', 'avg_transaction_value', 'retail_value', 'current_on_hand']:
+                        elif col in ['total_revenue', 'total_margin', 'margin_pct', 'avg_transaction_value', 'retail_value', 
+                                    'current_on_hand', 'value', 'cost_value', 'retail_extension', 'cost_extension',
+                                    'ending_retail', 'beginning_retail', 'inventory_cost', 'avg_inventory_value',
+                                    'avg_inventory_cost', 'total_inventory_value']:
                             try:
                                 # Handle fraction strings like "98833/25"
                                 df[col] = df[col].apply(lambda x: eval(x) if isinstance(x, str) and '/' in x else float(x))
                             except:
                                 pass
-                        elif col in ['sale_date', 'snapshot_date']:
+                        elif col in ['sale_date', 'snapshot_date', 'date_month']:
                             try:
                                 df[col] = pd.to_datetime(df[col])
                             except:
@@ -887,8 +1238,9 @@ class SuperGeminiRetailChatbot:
                     df = pd.DataFrame([data])
                     logger.info(f"Created single-row DataFrame from JSON object")
                     return df
-            except json.JSONDecodeError:
-                logger.error(f"Failed to parse JSON string result")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON string result: {e}")
+                logger.error(f"Raw result type: {type(result)}, content: {str(result)[:200]}")
                 return None
         
         elif isinstance(result, pd.DataFrame):

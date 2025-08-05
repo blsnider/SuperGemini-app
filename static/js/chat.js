@@ -11,9 +11,23 @@ class ChatManager {
         try {
             await this.loadModels();
             this.setupEventListeners();
+            this.initializeSnapshotDate();
         } catch (error) {
             console.error('Chat initialization failed:', error);
             this.showError('Failed to initialize chat');
+        }
+    }
+    
+    initializeSnapshotDate() {
+        // Set default snapshot date to yesterday
+        const snapshotDateInput = document.getElementById('snapshotDate');
+        if (snapshotDateInput) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            // Format as YYYY-MM-DD
+            const formattedDate = yesterday.toISOString().split('T')[0];
+            snapshotDateInput.value = formattedDate;
+            console.log('Default snapshot date set to:', formattedDate);
         }
     }
     
@@ -158,6 +172,18 @@ class ChatManager {
                 model: selectedModel
             };
             
+            // Add snapshot date if available
+            const snapshotDateInput = document.getElementById('snapshotDate');
+            console.log('Snapshot date input element:', snapshotDateInput);
+            console.log('Snapshot date value:', snapshotDateInput ? snapshotDateInput.value : 'input not found');
+            
+            if (snapshotDateInput && snapshotDateInput.value) {
+                requestBody.snapshot_date = snapshotDateInput.value;
+                console.log('Adding snapshot_date to request:', snapshotDateInput.value);
+            } else {
+                console.log('No snapshot date provided');
+            }
+            
             const response = await fetch('/api/chat/message', {
                 method: 'POST',
                 headers: {
@@ -233,16 +259,16 @@ class ChatManager {
         
         // Handle summary - either show it or show loading placeholder
         if (data.auto_summary) {
-            content += '<div class="summary-box" style="margin: 20px 0;">';
+            content += '<div class="summary-box" style="margin: 10px 0;">';
             content += '<h4>🤖 AI Insights</h4>';
             content += data.auto_summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
             content += '</div>';
         } else if (data.summary_pending) {
             // Add placeholder for lazy loading
-            content += `<div class="summary-box" id="summary-${data.query_id}" style="margin: 20px 0;">`;
+            content += `<div class="summary-box" id="summary-${data.query_id}" style="margin: 10px 0;">`;
             content += '<h4>🤖 AI Insights</h4>';
             content += '<div class="summary-loading">';
-            content += '<div class="spinner" style="width: 20px; height: 20px; margin: 0 auto 10px;"></div>';
+            content += '<div class="spinner" style="width: 10px; height: 10px; margin: 0 auto 10px;"></div>';
             content += '<p style="color: #667eea; margin: 0;">Generating insights...</p>';
             content += '</div>';
             content += '</div>';
@@ -292,29 +318,54 @@ class ChatManager {
         if (!data || data.length === 0) return 'No data available';
         
         const headers = Object.keys(data[0]);
-        let html = '<table class="sortable-table">';
+        const tableId = 'table-' + Date.now();
+        
+        // Create wrapper with search box
+        let html = '<div class="table-wrapper">';
+        
+        // Add search box on the left
+        html += '<div class="table-search-container">';
+        html += '<div class="table-search-box">';
+        html += `<input type="text" id="search-${tableId}" placeholder="Search table..." onkeyup="window.chatManager.searchTable('${tableId}', this.value)">`;
+        html += '<span class="search-icon">🔍</span>';
+        html += '</div>';
+        html += '<span class="search-results-count" id="search-count-${tableId}" style="color: #6b7280; font-size: 14px;"></span>';
+        html += '</div>';
+        
+        // Start table container
+        html += '<div class="table-container" id="container-' + tableId + '">';
+        html += `<table class="sortable-table" id="${tableId}">`;
         
         // Create header
         html += '<thead><tr>';
         headers.forEach(header => {
             const displayName = this.formatHeaderName(header);
-            html += `<th class="sortable">${displayName}</th>`;
+            html += `<th class="sortable" onclick="window.chatManager.sortTable('${tableId}', '${header}')">${displayName}</th>`;
         });
         html += '</tr></thead>';
         
         // Create body
         html += '<tbody>';
-        data.slice(0, 20).forEach(row => {
-            html += '<tr>';
+        data.slice(0, 20).forEach((row, index) => {
+            html += `<tr data-row-index="${index}">`;
             headers.forEach(header => {
                 const value = row[header];
                 const formattedValue = this.formatCellValue(value, header);
                 const cellClass = this.getCellClass(header);
-                html += `<td class="${cellClass}">${formattedValue}</td>`;
+                html += `<td class="${cellClass}" data-column="${header}">${formattedValue}</td>`;
             });
             html += '</tr>';
         });
         html += '</tbody></table>';
+        html += '</div>'; // Close table-container
+        html += '</div>'; // Close table-wrapper
+        
+        // Store data for sorting
+        if (!this.tableData) this.tableData = {};
+        this.tableData[tableId] = data.slice(0, 20);
+        
+        // Check for scroll after render
+        setTimeout(() => this.checkTableScroll(tableId), 100);
         
         return html;
     }
@@ -476,6 +527,141 @@ class ChatManager {
     
     showError(message) {
         this.addMessage('error', message);
+    }
+    
+    // Table search functionality
+    searchTable(tableId, searchValue) {
+        const table = document.getElementById(tableId);
+        if (!table) return;
+        
+        const rows = table.querySelectorAll('tbody tr');
+        const searchLower = searchValue.toLowerCase();
+        let visibleCount = 0;
+        
+        rows.forEach(row => {
+            let rowText = '';
+            row.querySelectorAll('td').forEach(td => {
+                rowText += td.textContent.toLowerCase() + ' ';
+            });
+            
+            if (rowText.includes(searchLower)) {
+                row.style.display = '';
+                visibleCount++;
+                
+                // Highlight matching cells
+                row.querySelectorAll('td').forEach(td => {
+                    const cellText = td.textContent.toLowerCase();
+                    if (searchValue && cellText.includes(searchLower)) {
+                        td.classList.add('highlight');
+                    } else {
+                        td.classList.remove('highlight');
+                    }
+                });
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Update count
+        const countElement = document.getElementById('search-count-' + tableId);
+        if (countElement) {
+            if (searchValue) {
+                countElement.textContent = `${visibleCount} of ${rows.length} rows`;
+            } else {
+                countElement.textContent = '';
+            }
+        }
+    }
+    
+    // Table sorting functionality
+    sortTable(tableId, column) {
+        const table = document.getElementById(tableId);
+        if (!table || !this.tableData || !this.tableData[tableId]) return;
+        
+        // Get current sort state
+        const th = table.querySelector(`th:nth-child(${this.getColumnIndex(table, column) + 1})`);
+        const currentSort = th.dataset.sort || 'none';
+        let newSort = currentSort === 'asc' ? 'desc' : 'asc';
+        
+        // Reset all headers
+        table.querySelectorAll('th').forEach(header => {
+            header.dataset.sort = 'none';
+            header.classList.remove('sort-asc', 'sort-desc');
+        });
+        
+        // Sort data
+        const sortedData = [...this.tableData[tableId]].sort((a, b) => {
+            let aVal = a[column];
+            let bVal = b[column];
+            
+            // Handle numeric values
+            if (!isNaN(aVal) && !isNaN(bVal)) {
+                aVal = parseFloat(aVal);
+                bVal = parseFloat(bVal);
+            }
+            
+            if (newSort === 'asc') {
+                return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+            } else {
+                return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+            }
+        });
+        
+        // Update header
+        th.dataset.sort = newSort;
+        th.classList.add(newSort === 'asc' ? 'sort-asc' : 'sort-desc');
+        
+        // Re-render table body
+        const tbody = table.querySelector('tbody');
+        tbody.innerHTML = '';
+        
+        sortedData.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            tr.dataset.rowIndex = index;
+            
+            Object.keys(row).forEach(header => {
+                const td = document.createElement('td');
+                td.className = this.getCellClass(header);
+                td.dataset.column = header;
+                const formattedValue = this.formatCellValue(row[header], header);
+                td.textContent = typeof formattedValue === 'string' ? formattedValue : String(formattedValue);
+                tr.appendChild(td);
+            });
+            
+            tbody.appendChild(tr);
+        });
+        
+        // Reapply search if active
+        const searchInput = document.getElementById('search-' + tableId);
+        if (searchInput && searchInput.value) {
+            this.searchTable(tableId, searchInput.value);
+        }
+    }
+    
+    getColumnIndex(table, columnName) {
+        const headers = table.querySelectorAll('th');
+        for (let i = 0; i < headers.length; i++) {
+            const headerText = headers[i].textContent.toLowerCase().replace(/ /g, '_');
+            if (headerText === columnName.toLowerCase()) {
+                return i;
+            }
+        }
+        return 0;
+    }
+    
+    // Check if table needs scroll indicators
+    checkTableScroll(tableId) {
+        const container = document.getElementById('container-' + tableId);
+        if (!container) return;
+        
+        const hasHorizontalScroll = container.scrollWidth > container.clientWidth;
+        const hasVerticalScroll = container.scrollHeight > container.clientHeight;
+        
+        if (hasHorizontalScroll || hasVerticalScroll) {
+            container.classList.add('has-scroll');
+        } else {
+            container.classList.remove('has-scroll');
+        }
     }
 }
 

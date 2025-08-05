@@ -198,7 +198,7 @@ body {
 /* Main Content */
 .main-content {
     flex: 1;
-    padding: 20px;
+    padding: 10px;
     margin-left: 0;
     transition: margin-left 0.3s ease;
 }
@@ -221,11 +221,11 @@ body {
 }
 
 .mt-10 {
-    margin-top: 10px;
+    margin-top: 5px;
 }
 
 .mb-20 {
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
 
 /* Loading Spinner */
@@ -242,4 +242,241 @@ body {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Table Styles with Fixed Height and Dual Scrolling */
+.table-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.table-search-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.table-search-box {
+    position: relative;
+    flex: 0 0 300px;
+}
+
+.table-search-box input {
+    width: 100%;
+    padding: 8px 35px 8px 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.table-search-box input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.table-search-box .search-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+.table-container {
+    max-width: 100%;
+    width: 100%;
+    max-height: 400px !important;  /* Fixed height for vertical scrolling */
+    overflow: auto !important;     /* Enable both scrollbars */
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    display: block !important;
+    position: relative;
+    background: white;
+}
+
+/* Ensure inner content doesn't interfere with scrolling */
+.table-container * {
+    max-width: none !important;
+}
+
+.sortable-table {
+    width: auto !important;  /* Allow table to size naturally */
+    min-width: 100%;     /* Ensure minimum width of container */
+    border-collapse: separate;
+    border-spacing: 0;
+    display: table !important;
+    table-layout: auto !important;
+    margin: 0 !important;
+}
+
+.sortable-table th,
+.sortable-table td {
+    padding: 12px 15px;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;  /* Prevent text wrapping */
+}
+
+.sortable-table th:last-child,
+.sortable-table td:last-child {
+    border-right: none;
+}
+
+.sortable-table tr:last-child td {
+    border-bottom: none;
+}
+
+.sortable-table th {
+    background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 2px solid #e2e8f0;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+}
+
+.sortable-table th:hover {
+    background: linear-gradient(to bottom, #f1f5f9, #e2e8f0);
+}
+
+.sortable-table th.sortable::after {
+    content: ' ↕';
+    color: #9ca3af;
+    font-size: 12px;
+    margin-left: 5px;
+}
+
+.sortable-table th.sort-asc::after {
+    content: ' ↑';
+    color: #667eea;
+    font-weight: bold;
+}
+
+.sortable-table th.sort-desc::after {
+    content: ' ↓';
+    color: #667eea;
+    font-weight: bold;
+}
+
+/* Enhanced Scrollbar Styling - More Visible */
+.table-container::-webkit-scrollbar {
+    width: 14px;   /* Vertical scrollbar width */
+    height: 14px;  /* Horizontal scrollbar height */
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(to bottom, #667eea, #764ba2);
+    border-radius: 8px;
+    border: 2px solid #f1f5f9;
+    min-height: 30px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(to bottom, #5a67d8, #6b46c1);
+}
+
+.table-container::-webkit-scrollbar-corner {
+    background: #f1f5f9;
+}
+
+/* Firefox scrollbar - more prominent */
+.table-container {
+    scrollbar-width: auto;  /* Use default width for better visibility */
+    scrollbar-color: #667eea #f1f5f9;
+}
+
+/* Scrollbar visibility indicator */
+.table-container.has-scroll {
+    box-shadow: 
+        inset 0 -1px 0 0 #e2e8f0,  /* Bottom border when scrollable */
+        inset -1px 0 0 0 #e2e8f0,  /* Right border when scrollable */
+        0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Table row styles */
+.sortable-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.sortable-table tbody tr:hover {
+    background-color: #f8fafc;
+}
+
+.sortable-table tbody tr:nth-child(even) {
+    background-color: #fafbfc;
+}
+
+/* Highlighted search results */
+.sortable-table tr.highlight {
+    background-color: #fef3c7 !important;
+}
+
+.sortable-table td.highlight {
+    background-color: #fde68a !important;
+    font-weight: 600;
+}
+
+/* No results message */
+.no-results-message {
+    text-align: center;
+    padding: 40px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* Chat-specific table overrides */
+.chat-box .table-wrapper {
+    margin: 15px 0;
+}
+
+.chat-box .table-container {
+    max-height: 500px !important; /* Slightly taller in chat context */
+}
+
+/* Ensure results-table div doesn't interfere */
+.results-table {
+    background: transparent;
+    padding: 0;
+    max-width: 100%;
+    overflow: visible;
+}
+
+/* Fix for nested table containers */
+.results-table .table-container {
+    margin: 0;
+}
+
+/* Responsive Table */
+@media (max-width: 768px) {
+    .table-container {
+        max-height: 300px !important;  /* Smaller height on mobile */
+        max-width: calc(100vw - 40px);  /* Account for padding/margins */
+    }
+    
+    .table-search-box {
+        flex: 1 1 auto;
+        max-width: 100%;
+    }
+    
+    .sortable-table th,
+    .sortable-table td {
+        padding: 8px 10px;
+        font-size: 14px;
+    }
 }

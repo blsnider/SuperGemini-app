@@ -9,7 +9,7 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     
     <!-- Core CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css?v=1754421210') }}">
     {% block extra_css %}{% endblock %}
     
     <!-- External Libraries -->
@@ -31,7 +31,7 @@
     </div>
     
     <!-- Version Badge -->
-    <div class="version-badge" title="Version 2.4.1 - Added version badge to all pages">v2.4.1</div>
+    <div class="version-badge" title="Version 2.7.0 - Hidden cost/snapshot UI, fixed OTB metrics param">v2.7.0</div>
     
     <div class="main-container">
         <!-- Collapsible Sidebar -->
@@ -46,20 +46,23 @@
                 </button>
             </div>
             
-            <h3>💰 Session Cost</h3>
-            <div class="cost-display" id="costDisplay">
-                <h4>Current Session</h4>
-                <div class="cost-item">
-                    <span>Total Cost:</span>
-                    <span id="totalCost">$0.00</span>
-                </div>
-                <div class="cost-item">
-                    <span>Queries:</span>
-                    <span id="queryCount">0</span>
-                </div>
-                <div class="cost-item">
-                    <span>Avg per Query:</span>
-                    <span id="avgCost">$0.00</span>
+            <!-- Session Cost Hidden per requirements -->
+            <div style="display: none;">
+                <h3>💰 Session Cost</h3>
+                <div class="cost-display" id="costDisplay">
+                    <h4>Current Session</h4>
+                    <div class="cost-item">
+                        <span>Total Cost:</span>
+                        <span id="totalCost">$0.00</span>
+                    </div>
+                    <div class="cost-item">
+                        <span>Queries:</span>
+                        <span id="queryCount">0</span>
+                    </div>
+                    <div class="cost-item">
+                        <span>Avg per Query:</span>
+                        <span id="avgCost">$0.00</span>
+                    </div>
                 </div>
             </div>
             
@@ -87,8 +90,8 @@
     </div>
     
     <!-- Core JavaScript -->
-    <script src="{{ url_for('static', filename='js/navigation.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/navigation.js?v=1754421210') }}"></script>
+    <script src="{{ url_for('static', filename='js/core.js?v=1754421210') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

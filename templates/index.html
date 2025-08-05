@@ -16,9 +16,14 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             max-width: 1600px; 
             margin: 0 auto; 
-            padding: 20px;
+            padding: 15px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        html {
+            overflow-x: hidden;
         }
         
         .main-container {
@@ -107,16 +112,16 @@
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 20px;
-            padding: 30px;
+            padding: 20px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.2);
         }
         
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 10px 20px;
             border-radius: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             box-shadow: 0 15px 40px rgba(102, 126, 234, 0.3);
             position: relative;
             overflow: hidden;
@@ -140,7 +145,7 @@
         
         .header h1 {
             margin: 0;
-            font-size: 2.2em;
+            font-size: 1.4em;
             font-weight: 700;
             position: relative;
             z-index: 1;
@@ -148,17 +153,17 @@
         }
         
         .header p {
-            margin: 10px 0 0 0;
+            margin: 5px 0 0 0;
             opacity: 0.95;
-            font-size: 1em;
+            font-size: 0.9em;
             position: relative;
             z-index: 1;
         }
         
         .version-badge {
             position: absolute;
-            top: 20px;
-            right: 20px;
+            top: 10px;
+            right: 15px;
             background: rgba(255, 255, 255, 0.3);
             color: #ffffff;
             padding: 6px 16px;
@@ -493,6 +498,22 @@
             border: 1px solid rgba(255,255,255,0.2);
             transition: all 0.3s ease;
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow: visible; /* Changed from auto to visible */
+            max-width: 100%;
+            width: 100%;
+        }
+        
+        /* Remove constraints on tables inside chat-box */
+        .chat-box .table-container {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto !important;
+            overflow-y: visible;
+            position: relative;
+        }
+        
+        .chat-box .results-table {
+            max-width: 100%;
         }
         
         .user-query { 
@@ -533,16 +554,64 @@
             overflow-x: auto;
             border: 1px solid #e2e8f0;
             margin: 0 0 15px 0;
+            max-width: 100%;
+        }
+        
+        .table-container {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: scroll; /* Changed from auto to scroll to always show scrollbar */
+            overflow-y: visible;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 0 auto 10px auto;
+            position: relative;
+            border: 2px solid #e2e8f0;
+            background: #f8fafc;
+            padding-bottom: 5px;
+        }
+        
+        /* Custom scrollbar styling - made more visible */
+        .table-container::-webkit-scrollbar {
+            height: 12px;
+            background-color: #e2e8f0;
+        }
+        
+        .table-container::-webkit-scrollbar-track {
+            background-color: #e2e8f0;
+            border-radius: 6px;
+            margin: 0 10px;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb {
+            background-color: #667eea;
+            border-radius: 6px;
+            transition: background-color 0.3s ease;
+            border: 1px solid #5a67d8;
+        }
+        
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background-color: #5a67d8;
+        }
+        
+        /* Firefox scrollbar styling */
+        .table-container {
+            scrollbar-width: thin;
+            scrollbar-color: #667eea #e2e8f0;
         }
         
         .sortable-table {
-            width: 100%;
-            border-collapse: collapse;
+            width: max-content !important;
+            min-width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: white;
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: table !important;
         }
         
         .sortable-table th {
@@ -583,6 +652,7 @@
             padding: 10px 8px;
             border-bottom: 1px solid #e2e8f0;
             font-size: 13px;
+            white-space: nowrap;
         }
         
         .sortable-table tr:hover {
@@ -608,6 +678,14 @@
         .sortable-table .units {
             text-align: right;
             color: #374151;
+        }
+
+        .pagination-controls span {
+            white-space: nowrap;
+        }   
+    
+        .pagination-controls button {
+            flex-shrink: 0;
         }
         
         .sql-box { 
@@ -787,6 +865,19 @@
                 </div>
             </div>
             
+            <!-- Inventory Snapshot Date Hidden per requirements -->
+            <div style="display: none;">
+                <h3>📅 Inventory Snapshot Date</h3>
+                <div style="margin-bottom: 20px;">
+                    <input type="date" id="snapshotDate" class="snapshot-date-input" 
+                           style="width: 100%; padding: 8px; border: 1px solid #e0e0e0; 
+                                  border-radius: 8px; font-size: 0.9em;">
+                    <small style="color: #666; font-size: 0.8em; display: block; margin-top: 5px;">
+                        Used for inventory status and overstock tools
+                    </small>
+                </div>
+            </div>
+            
             <h3>📖 Query History</h3>
             <div class="history-panel" id="historyPanel">
                 <div style="text-align: center; color: #666; font-size: 0.9em;">
@@ -804,7 +895,7 @@
             <div class="header">
                 <h1>🤖 Super Gemini Analytics Assistant</h1>
                 <p>MCP-powered AI for retail analytics, inventory optimization, and returns analysis</p>
-                <span class="version-badge" title="Version 2.4.8 - Fixed summary generation endpoint">v2.4.8</span>
+                <span class="version-badge" title="Version 2.5.1 - Fixed table horizontal scrolling in chat">v2.5.1</span>
             </div>
             
             <div id="chatView" class="container" style="flex: 1; display: flex; flex-direction: column;">
@@ -932,6 +1023,11 @@
             updateCostDisplay();
             checkHealth();
             setupAutoSuggestions();
+            
+            // Set default snapshot date to yesterday
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById('snapshotDate').value = yesterday.toISOString().split('T')[0];
             
             // Check health every 30 seconds
             setInterval(checkHealth, 30000);
@@ -1061,7 +1157,11 @@
                 content += '<div class="results-table">' + escapeHtml(resultsToDisplay) + '</div>';
             }
             
+            // Wrap the response content in a div with assistant-response class
+            content = '<div class="assistant-response" style="padding: 15px; margin-bottom: 15px; border-radius: 8px;">' + content + '</div>';
+            
             if (data.has_data) {
+                // Add buttons outside the assistant-response div
                 content += '<div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">';
                 content += `<button class="secondary-button" onclick="generateChart(${currentMessageId})">📊 Generate Chart</button>`;
                 content += `<button id="summaryBtn-${currentMessageId}" class="tertiary-button" onclick="showSummaryModal(${currentMessageId})" style="background: #9ca3af; cursor: not-allowed;" disabled>💡 View Summary</button>`;
@@ -1129,11 +1229,14 @@
                 'total_items_in_results'
             ];
             
-            // Define the desired column order
+            // Define the desired column order with variations
             const columnOrder = [
-                'shop_id', 'shop_name', 'vendor', 'style', 'product_name', 
-                'sku_id', 'total_revenue', 'total_cost', 'total_margin', 'margin_pct',
-                'margin_%', 'margin_percent'
+                'store_id', 'dim_store_id', 'store_number', 'store_name', 'store_city',
+                'shop_name', 'shop_id', 'specialty_shop', 'vendor', 'vendor_name1',
+                'style', 'sku_id', 'sku_number', 'sku', 'product_name', 'sku_description',
+                'product_description', 'total_revenue', 'revenue', 'total_cost', 'cost',
+                'cogs_extended', 'total_margin', 'margin', 'margin_dollars', 'total_units',
+                'units', 'quantity', 'current_oh_units', 'current_on_hand', 'oh_units'
             ];
             
             // Get all headers excluding the unwanted columns
@@ -1182,9 +1285,12 @@
             let html = '<div class="table-container">';
             
             // Add totals row if we have summary statistics
-            if (summaryStats.hasStats) {
+            if (summaryStats.hasStats || data.length > 0) {
                 html += '<div class="totals-row" style="background: #f8f9fa; padding: 15px; margin-bottom: 10px; border-radius: 8px; font-weight: 600;">';
-                html += '<div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px;">';
+                html += '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">';
+                
+                // Left side - Grand totals
+                html += '<div style="display: flex; flex-wrap: wrap; gap: 20px; flex: 1;">';
                 
                 if (summaryStats.grandTotalRevenue !== null) {
                     html += `<div>Grand Total Revenue: <span style="color: #059669;">$${summaryStats.grandTotalRevenue.toLocaleString()}</span></div>`;
@@ -1198,6 +1304,23 @@
                 if (summaryStats.grandTotalItems !== null) {
                     html += `<div>Grand Total Items: <span style="color: #dc2626;">${summaryStats.grandTotalItems.toLocaleString()}</span></div>`;
                 }
+                if (summaryStats.grandTotalOHUnits !== null) {
+                    html += `<div>Grand Total OH Units: <span style="color: #0891b2;">${summaryStats.grandTotalOHUnits.toLocaleString()}</span></div>`;
+                }
+                if (summaryStats.grandTotalOHCost !== null) {
+                    html += `<div>Grand Total OH Cost: <span style="color: #ea580c;">$${summaryStats.grandTotalOHCost.toLocaleString()}</span></div>`;
+                }
+                
+                html += '</div>';
+                
+                // Right side - Search box
+                html += '<div style="min-width: 250px;">';
+                const currentSearchValue = window.currentSearchTerm || '';
+                html += `<input type="text" id="tableSearchBox" placeholder="search style, sku, sku desc" `;
+                html += `value="${currentSearchValue.replace(/"/g, '&quot;')}" `;
+                html += 'style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-weight: normal;" ';
+                html += 'onkeyup="filterTableData(this.value)" />';
+                html += '</div>';
                 
                 html += '</div></div>';
             }
@@ -1236,6 +1359,7 @@
             html += '</div>';
             
             // Store filtered data for sorting and pagination
+            window.originalTableData = filteredData;  // Store original unfiltered data
             window.currentTableData = filteredData;
             window.currentTableHeaders = headers;
             window.currentTablePage = 1;
@@ -1250,72 +1374,95 @@
                 grandTotalRevenue: null,
                 grandTotalUnits: null,
                 grandTotalMargin: null,
-                grandTotalItems: null
+                grandTotalItems: null,
+                grandTotalOHUnits: null,
+                grandTotalOHCost: null
             };
             
             if (!data || data.length === 0) return stats;
             
-            // Check first row for summary columns
-            const firstRow = data[0];
+            // Sum up values from all rows
+            let totalRevenue = 0;
+            let totalUnits = 0;
+            let totalMargin = 0;
+            let totalOHUnits = 0;
+            let totalCost = 0;
+            let itemCount = data.length;
             
-            // Look for grand total revenue
-            const revenueKeys = ['grand_total_revenue', 'grand_total_sales', 'total_revenue'];
-            for (const key of revenueKeys) {
-                if (firstRow[key] !== undefined && firstRow[key] !== null) {
-                    stats.grandTotalRevenue = parseFloat(firstRow[key]);
-                    stats.hasStats = true;
-                    break;
-                }
-            }
+            // Define possible column names for each metric
+            const revenueKeys = ['total_revenue', 'revenue', 'sales_revenue', 'price_extended'];
+            const unitsKeys = ['total_units', 'units', 'quantity', 'units_sold', 'sales_units'];
+            const marginKeys = ['total_margin', 'margin', 'profit', 'margin_dollars'];
+            const ohUnitsKeys = ['current_oh_units', 'oh_units', 'on_hand_units', 'current_on_hand'];
+            const costKeys = ['total_cost', 'cost', 'cogs_extended', 'cost_value', 'cost_extension'];
             
-            // Look for grand total units
-            const unitsKeys = ['grand_total_units', 'total_units', 'total_units_sold'];
-            for (const key of unitsKeys) {
-                if (firstRow[key] !== undefined && firstRow[key] !== null) {
-                    stats.grandTotalUnits = parseFloat(firstRow[key]);
-                    stats.hasStats = true;
-                    break;
+            // Iterate through all rows to sum values
+            data.forEach(row => {
+                // Sum revenue
+                for (const key of revenueKeys) {
+                    if (row[key] !== undefined && row[key] !== null && !isNaN(row[key])) {
+                        totalRevenue += parseFloat(row[key]);
+                        stats.hasStats = true;
+                        break;
+                    }
                 }
-            }
+                
+                // Sum units
+                for (const key of unitsKeys) {
+                    if (row[key] !== undefined && row[key] !== null && !isNaN(row[key])) {
+                        totalUnits += parseFloat(row[key]);
+                        stats.hasStats = true;
+                        break;
+                    }
+                }
+                
+                // Sum margin
+                for (const key of marginKeys) {
+                    if (row[key] !== undefined && row[key] !== null && !isNaN(row[key])) {
+                        totalMargin += parseFloat(row[key]);
+                        stats.hasStats = true;
+                        break;
+                    }
+                }
+                
+                // Sum OH units
+                for (const key of ohUnitsKeys) {
+                    if (row[key] !== undefined && row[key] !== null && !isNaN(row[key])) {
+                        totalOHUnits += parseFloat(row[key]);
+                        stats.hasStats = true;
+                        break;
+                    }
+                }
+                
+                // Sum cost
+                for (const key of costKeys) {
+                    if (row[key] !== undefined && row[key] !== null && !isNaN(row[key])) {
+                        totalCost += parseFloat(row[key]);
+                        stats.hasStats = true;
+                        break;
+                    }
+                }
+            });
             
-            // Look for grand total margin
-            const marginKeys = ['grand_total_margin', 'total_margin', 'total_margin_dollars'];
-            for (const key of marginKeys) {
-                if (firstRow[key] !== undefined && firstRow[key] !== null) {
-                    stats.grandTotalMargin = parseFloat(firstRow[key]);
-                    stats.hasStats = true;
-                    break;
-                }
-            }
-            
-            // Look for grand total items/SKUs
-            const itemsKeys = ['grand_total_items', 'total_items', 'total_skus', 'unique_items'];
-            for (const key of itemsKeys) {
-                if (firstRow[key] !== undefined && firstRow[key] !== null) {
-                    stats.grandTotalItems = parseFloat(firstRow[key]);
-                    stats.hasStats = true;
-                    break;
-                }
-            }
+            // Set the calculated totals
+            if (totalRevenue > 0) stats.grandTotalRevenue = totalRevenue;
+            if (totalUnits > 0) stats.grandTotalUnits = totalUnits;
+            if (totalMargin > 0) stats.grandTotalMargin = totalMargin;
+            if (itemCount > 0) stats.grandTotalItems = itemCount;
+            if (totalOHUnits > 0) stats.grandTotalOHUnits = totalOHUnits;
+            if (totalCost > 0) stats.grandTotalOHCost = totalCost;
             
             return stats;
         }
         
         function createPaginationControls(totalRows) {
-            const totalPages = Math.ceil(totalRows / 20);
-            let html = '<div class="pagination-controls" style="margin-top: 15px; text-align: center;">';
-            
-            // Previous button
-            html += `<button onclick="changePage(-1)" id="prevPageBtn" style="margin: 0 5px;" disabled>Previous</button>`;
-            
-            // Page info
-            html += `<span style="margin: 0 15px;">Page <span id="currentPage">1</span> of ${totalPages} (${totalRows} total rows)</span>`;
-            
-            // Next button
-            html += `<button onclick="changePage(1)" id="nextPageBtn" style="margin: 0 5px;" ${totalPages <= 1 ? 'disabled' : ''}>Next</button>`;
-            
-            html += '</div>';
-            return html;
+                const totalPages = Math.ceil(totalRows / 20);
+                let html = '<div class="pagination-controls" style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 15px; min-width: fit-content;">';
+                html += `<button onclick="changePage(-1)" id="prevPageBtn" disabled>Previous</button>`;
+                html += `<span>Page <span id="currentPage">1</span> of ${totalPages} (${totalRows} total rows)</span>`;
+                html += `<button onclick="changePage(1)" id="nextPageBtn" ${totalPages <= 1 ? 'disabled' : ''}>Next</button>`;
+                html += '</div>';
+                return html;
         }
         
         function changePage(direction) {
@@ -1432,6 +1579,78 @@
             if (column.includes('cost') || column.includes('revenue') || column.includes('price') || column.includes('margin')) return 'currency';
             if (column.includes('units') || column.includes('count')) return 'units';
             return '';
+        }
+        
+        function filterTableData(searchTerm) {
+            if (!window.originalTableData) return;
+            
+            // Store the current search term
+            window.currentSearchTerm = searchTerm;
+            
+            // Reset to first page when filtering
+            window.currentTablePage = 1;
+            
+            if (!searchTerm || searchTerm.trim() === '') {
+                // If search is empty, show all data
+                window.currentTableData = window.originalTableData;
+                updateTableDisplay();
+                updatePaginationControls();
+                return;
+            }
+            
+            const searchLower = searchTerm.toLowerCase().trim();
+            
+            // Filter data based on search term
+            window.currentTableData = window.originalTableData.filter(row => {
+                // Check SKU fields (could be named differently)
+                const skuFields = ['sku', 'sku_id', 'sku_number', 'item_number', 'product_id'];
+                for (const field of skuFields) {
+                    if (row[field] && String(row[field]).toLowerCase().includes(searchLower)) {
+                        return true;
+                    }
+                }
+                
+                // Check description fields
+                const descFields = ['sku_description', 'product_description', 'product_name', 'description', 'item_description'];
+                for (const field of descFields) {
+                    if (row[field] && String(row[field]).toLowerCase().includes(searchLower)) {
+                        return true;
+                    }
+                }
+                
+                // Check style field
+                const styleFields = ['style', 'style_number', 'style_code'];
+                for (const field of styleFields) {
+                    if (row[field] && String(row[field]).toLowerCase().includes(searchLower)) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            });
+            
+            // Update the display
+            updateTableDisplay();
+            updatePaginationControls();
+        }
+        
+        function updatePaginationControls() {
+            if (!window.currentTableData) return;
+            
+            const totalRows = window.currentTableData.length;
+            const totalPages = Math.ceil(totalRows / 20);
+            
+            // Update page info
+            const pageInfoElements = document.querySelectorAll('.pagination-controls span');
+            pageInfoElements.forEach(elem => {
+                if (elem.innerHTML.includes('Page')) {
+                    elem.innerHTML = `Page <span id="currentPage">${window.currentTablePage}</span> of ${totalPages} (${totalRows} total rows)`;
+                }
+            });
+            
+            // Update button states
+            document.getElementById('prevPageBtn').disabled = window.currentTablePage <= 1;
+            document.getElementById('nextPageBtn').disabled = window.currentTablePage >= totalPages;
         }
         
         function sortTableData(column, type) {
@@ -1863,6 +2082,13 @@
                     requestBody.mcp_tool = selectedTool;
                 }
                 
+                // Add snapshot date if available
+                const snapshotDateInput = document.getElementById('snapshotDate');
+                if (snapshotDateInput && snapshotDateInput.value) {
+                    requestBody.snapshot_date = snapshotDateInput.value;
+                    console.log('Adding snapshot_date to request:', snapshotDateInput.value);
+                }
+                
                 console.log('Sending request:', requestBody);
                 
                 const response = await fetch(endpoint, {
@@ -1900,7 +2126,10 @@
                     document.getElementById('exportButton').disabled = !data.has_data;
                     
                     updateCostInfo();
-                    loadHistory();
+                    // Refresh query history in sidebar if available
+                    if (typeof window.refreshQueryHistory === 'function') {
+                        window.refreshQueryHistory();
+                    }
                     hasSubmittedQuery = true;
                 } else {
                     let errorContent = buildErrorContent(data, selectedModel);
@@ -2248,7 +2477,16 @@
         function addMessage(type, content, messageId) {
             const chatHistory = document.getElementById('chatHistory');
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'chat-box ' + (type === 'user' ? 'user-query' : type === 'error' ? 'error' : 'assistant-response');
+            // Remove user-query class for user messages, keep only chat-box
+            if (type === 'user') {
+                messageDiv.className = 'chat-box';
+            } else if (type === 'error') {
+                messageDiv.className = 'chat-box error';
+            } else {
+                // For assistant messages, we'll apply the assistant-response class later
+                messageDiv.className = 'chat-box';
+            }
+            
             if (messageId) {
                 messageDiv.id = 'message-' + messageId;
             }

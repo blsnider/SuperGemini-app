@@ -1,0 +1,1043 @@
+# MCP Tools - Sample BigQuery Validation Queries
+
+## 1. get_top_selling_items
+```sql
+WITH sales_data AS (
+  SELECT 
+    fs.sku_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    MAX(st.name) as store_name,
+    SUM(fs.quantity) as total_units,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.cogs_extended) as total_cost,
+    SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100 as margin_pct
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE 1=1
+    AND st.dim_store_id = 64  -- Fargo store
+    AND skus.specialty_shop = 29  -- Specific shop
+    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  GROUP BY fs.sku_id
+),
+current_inventory AS (
+  SELECT 
+    sku_number as sku_id,
+    SUM(oh_units) as current_oh_units
+  FROM `sis-data-marts.data_marts.mart_current_on_hand`
+  WHERE store_number = 64
+  GROUP BY sku_number
+)
+SELECT 
+  s.*,
+  COALESCE(i.current_oh_units, 0) as current_oh_units
+FROM sales_data s
+LEFT JOIN current_inventory i ON s.sku_id = i.sku_id
+ORDER BY s.total_revenue DESC
+LIMIT 50
+```
+
+## 2. get_top_selling_item_comparison
+```sql
+WITH store1_sales AS (
+  SELECT 
+    fs.sku_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    SUM(fs.quantity) as store1_units,
+    SUM(fs.price_extended) as store1_revenue,
+    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store1_rank
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE st.dim_store_id = 64  -- Fargo
+    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+),
+store2_sales AS (
+  SELECT 
+    fs.sku_id,
+    SUM(fs.quantity) as store2_units,
+    SUM(fs.price_extended) as store2_revenue,
+    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store2_rank
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE st.dim_store_id = 19  -- Another store for comparison
+    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+),
+combined AS (
+  SELECT 
+    COALESCE(s1.sku_id, s2.sku_id) as sku_id,
+    COALESCE(s1.product_name, 'Not sold in Store 1') as product_name,
+    COALESCE(s1.style, '') as style,
+    COALESCE(s1.vendor, '') as vendor,
+    COALESCE(s1.shop_name, '') as shop_name,
+    -- Store 1 metrics
+    COALESCE(s1.store1_rank, 9999) as store1_rank,
+    COALESCE(s1.store1_units, 0) as store1_units,
+    COALESCE(s1.store1_revenue, 0) as store1_revenue,
+    -- Store 2 metrics
+    COALESCE(s2.store2_rank, 9999) as store2_rank,
+    COALESCE(s2.store2_units, 0) as store2_units,
+    COALESCE(s2.store2_revenue, 0) as store2_revenue,
+    -- Comparison metrics
+    COALESCE(s1.store1_rank, 9999) - COALESCE(s2.store2_rank, 9999) as rank_difference,
+    COALESCE(s1.store1_revenue, 0) + COALESCE(s2.store2_revenue, 0) as total_revenue
+  FROM store1_sales s1
+  FULL OUTER JOIN store2_sales s2 ON s1.sku_id = s2.sku_id
+)
+SELECT 
+  sku_id,
+  product_name,
+  style,
+  vendor,
+  shop_name,
+  store1_rank,
+  store1_units,
+  store1_revenue,
+  store2_rank,
+  store2_units,
+  store2_revenue,
+  rank_difference,
+  CASE 
+    WHEN store1_rank < store2_rank THEN 'Better in Store 1'
+    WHEN store1_rank > store2_rank THEN 'Better in Store 2'
+    WHEN store1_rank = store2_rank THEN 'Same rank'
+    ELSE 'Only in one store'
+  END as performance_comparison
+FROM combined
+WHERE store1_rank <= 50 OR store2_rank <= 50
+ORDER BY total_revenue DESC
+LIMIT 50
+```
+
+## 3. get_units_vs_dollars_comparison
+```sql
+WITH item_metrics AS (
+  SELECT 
+    fs.sku_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    SUM(fs.quantity) as total_units,
+    SUM(fs.price_extended) as total_revenue,
+    SAFE_DIVIDE(SUM(fs.price_extended), NULLIF(SUM(fs.quantity), 0)) as avg_price,
+    SUM(fs.price_extended) - SUM(fs.cogs_extended) as total_margin,
+    RANK() OVER (ORDER BY SUM(fs.quantity) DESC) as unit_rank,
+    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as revenue_rank
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND st.dim_store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+)
+SELECT 
+  sku_id,
+  product_name,
+  style,
+  vendor,
+  shop_name,
+  total_units,
+  total_revenue,
+  avg_price,
+  total_margin,
+  unit_rank,
+  revenue_rank,
+  ABS(unit_rank - revenue_rank) as rank_difference,
+  CASE 
+    WHEN unit_rank < revenue_rank THEN 'High Volume, Lower Price'
+    WHEN unit_rank > revenue_rank THEN 'Low Volume, Higher Price'
+    ELSE 'Balanced'
+  END as item_profile
+FROM item_metrics
+WHERE unit_rank <= 50 OR revenue_rank <= 50
+ORDER BY total_revenue DESC
+```
+
+## 4. get_shop_performance
+```sql
+WITH shop_metrics AS (
+  SELECT 
+    skus.specialty_shop as shop_id,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    COUNT(DISTINCT fs.sku_id) as unique_skus,
+    COUNT(DISTINCT fs.transaction_id) as transaction_count,
+    SUM(fs.quantity) as total_units,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.cogs_extended) as total_cost,
+    SUM(fs.price_extended) - SUM(fs.cogs_extended) as total_margin,
+    SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100 as margin_pct,
+    SAFE_DIVIDE(SUM(fs.price_extended), COUNT(DISTINCT fs.transaction_id)) as avg_transaction_value,
+    SAFE_DIVIDE(SUM(fs.quantity), COUNT(DISTINCT fs.transaction_id)) as avg_units_per_transaction
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND skus.specialty_shop = 29  -- Specific shop
+    AND st.dim_store_id = 64
+  GROUP BY skus.specialty_shop
+),
+shop_rankings AS (
+  SELECT 
+    *,
+    RANK() OVER (ORDER BY total_units DESC) as unit_rank,
+    RANK() OVER (ORDER BY total_revenue DESC) as revenue_rank,
+    RANK() OVER (ORDER BY margin_pct DESC) as margin_rank,
+    RANK() OVER (ORDER BY total_margin DESC) as margin_dollar_rank
+  FROM shop_metrics
+)
+SELECT * FROM shop_rankings
+ORDER BY revenue_rank
+```
+
+## 5. get_1Y_out_of_stock_items
+```sql
+WITH out_of_stock AS (
+  SELECT 
+    inv.sku_number,
+    inv.store_number,
+    inv.oh_units
+  FROM `sis-data-marts.data_marts.mart_current_on_hand` inv
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON inv.sku_number = skus.dim_sku_id
+  WHERE 
+    inv.oh_units = 0
+    AND skus.as400_data.rate1 = '1-Y5'
+    AND inv.store_number = 64
+    AND skus.specialty_shop = 29
+),
+recent_sales AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(fs.quantity) as units_sold_30d,
+    SUM(fs.price_extended) as revenue_30d
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id, fs.store_id
+  HAVING SUM(fs.quantity) >= 1
+)
+SELECT 
+  oos.sku_number,
+  oos.store_number,
+  rs.units_sold_30d,
+  rs.revenue_30d,
+  ROUND(rs.units_sold_30d / 30.0, 1) as daily_velocity
+FROM out_of_stock oos
+INNER JOIN recent_sales rs ON oos.sku_number = rs.sku_id AND oos.store_number = rs.store_id
+ORDER BY rs.revenue_30d DESC
+LIMIT 100
+```
+
+## 6. get_sales_trends
+```sql
+SELECT 
+  DATE(fs.transaction_datetime) as sale_date,
+  COUNT(DISTINCT fs.transaction_id) as transaction_count,
+  SUM(fs.quantity) as total_units,
+  SUM(fs.price_extended) as total_revenue,
+  SUM(fs.cogs_extended) as total_cost,
+  ROUND(SUM(fs.price_extended) - SUM(fs.cogs_extended), 2) as total_margin,
+  ROUND(SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100, 1) as margin_pct
+FROM `scheels-data-marts.facts_sales.fct_sales` fs
+LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+  AND st.dim_store_id = 64
+  AND skus.specialty_shop = 29
+GROUP BY DATE(fs.transaction_datetime)
+ORDER BY sale_date DESC
+```
+
+## 7. get_sell_through_rates
+```sql
+WITH beginning_inventory AS (
+  SELECT 
+    inv.sku_number,
+    inv.store_number,
+    inv.oh_units as beginning_units,
+    inv.retail_extension as beginning_retail,
+    inv.product_details.sku_description as product_name,
+    inv.product_details.style as style,
+    COALESCE(skus.specialty_shop, 0) as shop_id,
+    COALESCE(skus.as400_data.specialty_shop_description, '') as shop_name
+  FROM `sis-data-marts.data_marts.mart_inventory_snapshots` inv
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON inv.sku_number = skus.dim_sku_id
+  WHERE DATE(inv.snapshot_date) = DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    AND inv.oh_units >= 10
+    AND inv.store_number = 64
+    AND skus.specialty_shop = 29
+),
+period_sales AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(fs.quantity) as units_sold,
+    SUM(fs.price_extended) as revenue_sold
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  GROUP BY fs.sku_id, fs.store_id
+),
+current_inventory AS (
+  SELECT 
+    inv.sku_number,
+    inv.store_number,
+    inv.oh_units as ending_units,
+    inv.retail_extension as ending_retail
+  FROM `sis-data-marts.data_marts.mart_inventory_snapshots` inv
+  WHERE inv.snapshot_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+)
+SELECT 
+  bi.sku_number,
+  bi.store_number,
+  bi.product_name,
+  bi.style,
+  bi.shop_name,
+  bi.beginning_units,
+  COALESCE(ps.units_sold, 0) as units_sold,
+  COALESCE(ci.ending_units, 0) as ending_units,
+  bi.beginning_retail,
+  COALESCE(ps.revenue_sold, 0) as revenue_sold,
+  COALESCE(ci.ending_retail, 0) as ending_retail,
+  SAFE_DIVIDE(COALESCE(ps.units_sold, 0), bi.beginning_units) * 100 as unit_sell_through_pct,
+  SAFE_DIVIDE(COALESCE(ps.revenue_sold, 0), bi.beginning_retail) * 100 as dollar_sell_through_pct,
+  CASE 
+    WHEN SAFE_DIVIDE(COALESCE(ps.units_sold, 0), bi.beginning_units) < 0.2 THEN 'Slow Moving'
+    WHEN SAFE_DIVIDE(COALESCE(ps.units_sold, 0), bi.beginning_units) > 0.8 THEN 'Fast Moving'
+    ELSE 'Normal'
+  END as velocity_category
+FROM beginning_inventory bi
+LEFT JOIN period_sales ps ON bi.sku_number = ps.sku_id AND bi.store_number = ps.store_id
+LEFT JOIN current_inventory ci ON bi.sku_number = ci.sku_number AND bi.store_number = ci.store_number
+ORDER BY unit_sell_through_pct DESC
+LIMIT 100
+```
+
+## 8. get_time_period_comparison
+```sql
+WITH time_metrics AS (
+  SELECT 
+    DATE(fs.transaction_datetime) as sale_date,
+    EXTRACT(YEAR FROM fs.transaction_datetime) as year,
+    EXTRACT(MONTH FROM fs.transaction_datetime) as month,
+    EXTRACT(WEEK FROM fs.transaction_datetime) as week,
+    EXTRACT(DAYOFWEEK FROM fs.transaction_datetime) as day_of_week,
+    CASE 
+      WHEN EXTRACT(DAYOFWEEK FROM fs.transaction_datetime) IN (1, 7) THEN 'Weekend'
+      ELSE 'Weekday'
+    END as day_type,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    SUM(fs.quantity) as total_units,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.price_extended) - SUM(fs.cogs_extended) as total_margin,
+    COUNT(DISTINCT fs.transaction_id) as transaction_count
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE st.dim_store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY 1, 2, 3, 4, 5, 6
+)
+SELECT 
+  FORMAT_DATE('%Y-%m', sale_date) as period,  -- Month over month comparison
+  CAST(sale_date AS STRING) as dimension,
+  SUM(total_units) as total_units,
+  SUM(total_revenue) as total_revenue,
+  SUM(total_margin) as total_margin,
+  SAFE_DIVIDE(SUM(total_margin), SUM(total_revenue)) * 100 as margin_pct,
+  SUM(transaction_count) as transactions,
+  SAFE_DIVIDE(SUM(total_revenue), SUM(transaction_count)) as avg_transaction_value,
+  COUNT(DISTINCT sale_date) as days_in_period
+FROM time_metrics
+WHERE sale_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)
+GROUP BY 1, 2
+ORDER BY 1 DESC, total_revenue DESC
+```
+
+## 9. get_inventory_status
+```sql
+WITH inventory_metrics AS (
+  SELECT 
+    inv.sku_number,
+    inv.store_number,
+    inv.product_details.sku_description as product_name,
+    inv.product_details.style as style,
+    inv.product_details.vendor_name1 as vendor,
+    inv.store_details.store_city as store_city,
+    inv.oh_units as current_on_hand,
+    inv.retail_extension as retail_value,
+    inv.cost_extension as cost_value,
+    COALESCE(skus.specialty_shop, 0) as shop_id
+  FROM `sis-data-marts.data_marts.mart_inventory_snapshots` inv
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON inv.sku_number = skus.dim_sku_id
+  WHERE inv.snapshot_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    AND inv.store_number = 64
+    AND skus.specialty_shop = 29
+),
+sales_patterns AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(CASE WHEN DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY) 
+             THEN fs.daily_units ELSE 0 END) as units_7d,
+    SUM(CASE WHEN DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY) 
+             THEN fs.daily_units ELSE 0 END) as units_30d,
+    SUM(CASE WHEN DATE(fs.sale_date) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY) 
+             THEN fs.daily_units ELSE 0 END) as units_90d,
+    STDDEV(daily_units) as sales_volatility
+  FROM (
+    SELECT 
+      sku_id,
+      store_id,
+      DATE(transaction_datetime) as sale_date,
+      SUM(quantity) as daily_units
+    FROM `scheels-data-marts.facts_sales.fct_sales`
+    WHERE DATE(transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    GROUP BY 1, 2, 3
+  ) fs
+  GROUP BY fs.sku_id, fs.store_id
+),
+risk_scoring AS (
+  SELECT 
+    im.*,
+    COALESCE(sp.units_7d, 0) as units_sold_7d,
+    COALESCE(sp.units_30d, 0) as units_sold_30d,
+    COALESCE(sp.units_90d, 0) as units_sold_90d,
+    COALESCE(sp.sales_volatility, 0) as sales_volatility,
+    CASE 
+      WHEN COALESCE(sp.units_7d, 0) = 0 THEN 999
+      ELSE ROUND(im.current_on_hand / (sp.units_7d / 7.0), 1)
+    END as days_of_supply,
+    SAFE_DIVIDE(im.current_on_hand, NULLIF(sp.units_30d / 30.0, 0)) as coverage_ratio,
+    CASE
+      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN 100
+      WHEN im.current_on_hand > 0 AND im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 3 THEN 
+        80 + (20 * (1 - im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) / 3))
+      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN 
+        60 + (20 * (1 - (im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) - 3) / 4))
+      WHEN im.current_on_hand / NULLIF(sp.units_30d / 30.0, 0) > 90 THEN 
+        20 + (20 * LEAST((im.current_on_hand / NULLIF(sp.units_90d / 90.0, 0) - 90) / 90, 1))
+      ELSE GREATEST(0, 20 - (im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0)))
+    END as priority_score,
+    CASE
+      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN 'Out of Stock'
+      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 3 THEN 'Critical'
+      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN 'High Risk'
+      WHEN im.current_on_hand / NULLIF(sp.units_90d / 90.0, 0) > 90 THEN 'Overstocked'
+      ELSE 'Normal'
+    END as risk_category,
+    CASE
+      WHEN im.current_on_hand = 0 AND COALESCE(sp.units_7d, 0) > 0 THEN 
+        CONCAT('URGENT: Reorder ', CAST(CEIL(sp.units_30d / 30.0 * 14) AS STRING), ' units immediately')
+      WHEN im.current_on_hand / NULLIF(sp.units_7d / 7.0, 0) < 7 THEN 
+        CONCAT('Reorder ', CAST(CEIL(sp.units_30d / 30.0 * 30 - im.current_on_hand) AS STRING), ' units')
+      WHEN im.current_on_hand / NULLIF(sp.units_90d / 90.0, 0) > 90 THEN 
+        'Consider markdown or transfer'
+      ELSE 'Monitor'
+    END as recommended_action
+  FROM inventory_metrics im
+  LEFT JOIN sales_patterns sp ON im.sku_number = sp.sku_id AND im.store_number = sp.store_id
+)
+SELECT * FROM risk_scoring
+WHERE priority_score >= 0
+ORDER BY priority_score DESC, retail_value DESC
+LIMIT 100
+```
+
+## 10. get_top_margin_items
+```sql
+WITH margin_analysis AS (
+  SELECT 
+    fs.sku_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    MAX(st.name) as store_name,
+    SUM(fs.quantity) as total_units,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.cogs_extended) as total_cost,
+    SUM(fs.price_extended) - SUM(fs.cogs_extended) as total_margin,
+    SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100 as margin_pct
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_stores` st ON fs.store_id = st.dim_store_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND st.dim_store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+  HAVING SUM(fs.price_extended) >= 500
+)
+SELECT *
+FROM margin_analysis
+WHERE margin_pct > 0
+ORDER BY margin_pct DESC, total_margin DESC
+LIMIT 50
+```
+
+## 11. get_overstock_items (Already Provided - Updated)
+```sql
+WITH latest_inventory AS (
+  SELECT 
+    inv.sku_number,
+    inv.store_number,
+    inv.product_details.sku_description as product_name,
+    inv.product_details.style as style,
+    COALESCE(skus.specialty_shop, 0) as shop_id,
+    COALESCE(skus.as400_data.specialty_shop_description, inv.product_details.specialty_shop_description, '') as shop_name,
+    inv.store_details.store_city as store_city,
+    inv.oh_units as current_on_hand,
+    inv.retail_extension as retail_value,
+    inv.cost_extension as cost_value,
+    inv.snapshot_date
+  FROM `sis-data-marts.data_marts.mart_inventory_snapshots` inv
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON inv.sku_number = skus.dim_sku_id
+  WHERE inv.snapshot_date = DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    AND inv.oh_units > 0
+    AND inv.store_number = 64
+    AND skus.specialty_shop = 29
+),
+sales_velocity AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(CASE WHEN DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY) 
+             THEN fs.quantity ELSE 0 END) as units_sold_90d
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id, fs.store_id
+)
+SELECT 
+  inv.sku_number,
+  inv.store_number,
+  inv.product_name,
+  inv.style,
+  inv.store_city,
+  inv.current_on_hand,
+  inv.cost_value,
+  COALESCE(sv.units_sold_90d, 0) as units_sold_90d,
+  CASE 
+    WHEN COALESCE(sv.units_sold_90d, 0) = 0 THEN 999
+    ELSE ROUND(inv.current_on_hand / (sv.units_sold_90d / 90.0), 1)
+  END as days_supply
+FROM latest_inventory inv
+LEFT JOIN sales_velocity sv ON inv.sku_number = sv.sku_id AND inv.store_number = sv.store_id
+WHERE (CASE 
+    WHEN COALESCE(sv.units_sold_90d, 0) = 0 THEN 999
+    ELSE inv.current_on_hand / (sv.units_sold_90d / 90.0)
+  END) >= 90
+ORDER BY inv.cost_value DESC
+LIMIT 100
+```
+
+## 12. get_comparison_analysis
+```sql
+WITH store1_sales AS (
+  SELECT 
+    fs.sku_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    SUM(fs.quantity) as store1_units,
+    SUM(fs.price_extended) as store1_revenue,
+    ROUND(AVG(fs.price_extended / NULLIF(fs.quantity, 0)), 2) as store1_avg_price,
+    ROUND(SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100, 1) as store1_margin_pct,
+    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store1_rank
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE fs.store_id = 64
+    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+),
+store2_sales AS (
+  SELECT 
+    fs.sku_id,
+    SUM(fs.quantity) as store2_units,
+    SUM(fs.price_extended) as store2_revenue,
+    ROUND(AVG(fs.price_extended / NULLIF(fs.quantity, 0)), 2) as store2_avg_price,
+    ROUND(SAFE_DIVIDE(SUM(fs.price_extended) - SUM(fs.cogs_extended), SUM(fs.price_extended)) * 100, 1) as store2_margin_pct,
+    RANK() OVER (ORDER BY SUM(fs.price_extended) DESC) as store2_rank
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE fs.store_id = 19
+    AND DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 42 DAY)
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id
+),
+combined_sales AS (
+  SELECT 
+    COALESCE(s1.sku_id, s2.sku_id) as sku_id,
+    COALESCE(s1.product_name, 'Not sold in Store 1') as product_name,
+    COALESCE(s1.style, '') as style,
+    COALESCE(s1.vendor, '') as vendor,
+    COALESCE(s1.shop_name, '') as shop_name,
+    -- Store 1 metrics
+    COALESCE(s1.store1_units, 0) as store1_units,
+    COALESCE(s1.store1_revenue, 0) as store1_revenue,
+    COALESCE(s1.store1_avg_price, 0) as store1_avg_price,
+    COALESCE(s1.store1_margin_pct, 0) as store1_margin_pct,
+    COALESCE(s1.store1_rank, 999) as store1_rank,
+    -- Store 2 metrics
+    COALESCE(s2.store2_units, 0) as store2_units,
+    COALESCE(s2.store2_revenue, 0) as store2_revenue,
+    COALESCE(s2.store2_avg_price, 0) as store2_avg_price,
+    COALESCE(s2.store2_margin_pct, 0) as store2_margin_pct,
+    COALESCE(s2.store2_rank, 999) as store2_rank,
+    -- Comparison metrics
+    COALESCE(s1.store1_revenue, 0) + COALESCE(s2.store2_revenue, 0) as combined_revenue
+  FROM store1_sales s1
+  FULL OUTER JOIN store2_sales s2 ON s1.sku_id = s2.sku_id
+)
+SELECT 
+  sku_id,
+  product_name,
+  style,
+  vendor,
+  shop_name,
+  -- Store 1 columns
+  store1_rank as Rank_Store1,
+  store1_units as Units_Store1,
+  store1_revenue as Revenue_Store1,
+  store1_avg_price as AvgPrice_Store1,
+  store1_margin_pct as Margin_Store1,
+  -- Store 2 columns
+  store2_rank as Rank_Store2,
+  store2_units as Units_Store2, 
+  store2_revenue as Revenue_Store2,
+  store2_avg_price as AvgPrice_Store2,
+  store2_margin_pct as Margin_Store2,
+  -- Differences
+  store1_units - store2_units as Units_Diff,
+  store1_revenue - store2_revenue as Revenue_Diff,
+  store1_rank - store2_rank as Rank_Diff
+FROM combined_sales
+WHERE store1_rank <= 25 OR store2_rank <= 25
+ORDER BY combined_revenue DESC
+LIMIT 25
+```
+
+## 13. get_advanced_inventory_turnover
+```sql
+WITH sales_aggregates AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(fs.quantity) as units_sold,
+    SUM(fs.price_extended) as revenue,
+    SUM(fs.cogs_extended) as cogs
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)
+    AND fs.store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id, fs.store_id
+),
+inventory_averages AS (
+  SELECT 
+    oh.sku_number,
+    oh.store_number,
+    AVG(oh.oh_units) as avg_on_hand,
+    AVG(oh.cost_extension) as avg_inventory_value
+  FROM `sis-data-marts.data_marts.mart_current_on_hand` oh
+  WHERE oh.store_number = 64
+  GROUP BY oh.sku_number, oh.store_number
+)
+SELECT 
+  sa.sku_id,
+  MAX(skus.as400_data.sku_description) as product_name,
+  MAX(skus.as400_data.style) as style,
+  MAX(skus.as400_data.vendor_name1) as vendor,
+  sa.units_sold,
+  ROUND(ia.avg_on_hand, 1) as avg_inventory_units,
+  ROUND(ia.avg_inventory_value, 2) as avg_inventory_value,
+  CASE 
+    WHEN ia.avg_on_hand > 0 THEN ROUND((sa.units_sold * (365.0 / 60)) / ia.avg_on_hand, 2)
+    ELSE NULL 
+  END as turnover_ratio,
+  CASE 
+    WHEN sa.units_sold > 0 THEN ROUND(ia.avg_on_hand / (sa.units_sold / 60), 1)
+    ELSE 999
+  END as days_of_supply,
+  CASE
+    WHEN ia.avg_on_hand > 0 AND (sa.units_sold * (365.0 / 60)) / ia.avg_on_hand >= 12 THEN 'Very Fast'
+    WHEN ia.avg_on_hand > 0 AND (sa.units_sold * (365.0 / 60)) / ia.avg_on_hand >= 6 THEN 'Fast'
+    WHEN ia.avg_on_hand > 0 AND (sa.units_sold * (365.0 / 60)) / ia.avg_on_hand >= 3 THEN 'Normal'
+    WHEN ia.avg_on_hand > 0 AND (sa.units_sold * (365.0 / 60)) / ia.avg_on_hand >= 1 THEN 'Slow'
+    ELSE 'Very Slow'
+  END as movement_category
+FROM sales_aggregates sa
+INNER JOIN inventory_averages ia ON sa.sku_id = ia.sku_number AND sa.store_id = ia.store_number
+LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON sa.sku_id = skus.dim_sku_id
+WHERE ia.avg_on_hand > 0
+GROUP BY sa.sku_id, sa.units_sold, ia.avg_on_hand, ia.avg_inventory_value
+ORDER BY turnover_ratio DESC
+LIMIT 100
+```
+
+## 14. get_advanced_stockout_analysis
+```sql
+WITH current_stockouts AS (
+  SELECT 
+    oh.sku_number,
+    oh.store_number,
+    COALESCE(skus.as400_data.sku_description, 'Unknown') as product_name,
+    COALESCE(skus.as400_data.style, '') as style,
+    COALESCE(skus.as400_data.vendor_name1, '') as vendor,
+    COALESCE(skus.specialty_shop, 0) as shop_id,
+    oh.oh_units as current_on_hand
+  FROM `sis-data-marts.data_marts.mart_current_on_hand` oh
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON oh.sku_number = skus.dim_sku_id
+  WHERE oh.oh_units = 0
+    AND oh.store_number = 64
+    AND skus.specialty_shop = 29
+),
+historical_sales AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    AVG(fs.quantity) as avg_daily_sales,
+    SUM(fs.quantity) as total_units_sold,
+    AVG(fs.price_extended / NULLIF(fs.quantity, 0)) as avg_selling_price,
+    COUNT(DISTINCT DATE(fs.transaction_datetime)) as days_with_sales
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)
+    AND DATE(fs.transaction_datetime) < DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+  GROUP BY fs.sku_id, fs.store_id
+),
+recent_activity AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    MAX(DATE(fs.transaction_datetime)) as last_sale_date,
+    DATE_DIFF(CURRENT_DATE(), MAX(DATE(fs.transaction_datetime)), DAY) as days_since_last_sale
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  GROUP BY fs.sku_id, fs.store_id
+)
+SELECT 
+  cs.sku_number,
+  cs.product_name,
+  cs.style,
+  cs.vendor,
+  cs.store_number,
+  ra.days_since_last_sale,
+  ROUND(hs.avg_daily_sales, 2) as avg_daily_demand,
+  hs.total_units_sold as units_sold_period,
+  ROUND(hs.avg_selling_price, 2) as avg_price,
+  ROUND(hs.avg_daily_sales * hs.avg_selling_price * ra.days_since_last_sale, 2) as estimated_lost_revenue,
+  ROUND((ra.days_since_last_sale / 60.0) * 100, 1) as stockout_rate_pct,
+  CASE
+    WHEN ra.days_since_last_sale >= 14 THEN 'Critical'
+    WHEN ra.days_since_last_sale >= 7 THEN 'High'
+    WHEN ra.days_since_last_sale >= 3 THEN 'Medium'
+    ELSE 'Low'
+  END as stockout_severity
+FROM current_stockouts cs
+LEFT JOIN historical_sales hs ON cs.sku_number = hs.sku_id AND cs.store_number = hs.store_id
+LEFT JOIN recent_activity ra ON cs.sku_number = ra.sku_id AND cs.store_number = ra.store_id
+WHERE hs.avg_daily_sales > 0
+  AND ra.days_since_last_sale >= 1
+ORDER BY estimated_lost_revenue DESC
+LIMIT 100
+```
+
+## 15. get_advanced_carrying_costs
+```sql
+WITH inventory_metrics AS (
+  SELECT 
+    oh.sku_number,
+    oh.store_number,
+    COALESCE(skus.as400_data.sku_description, 'Unknown') as product_name,
+    COALESCE(skus.as400_data.style, '') as style,
+    COALESCE(skus.as400_data.vendor_name1, '') as vendor,
+    oh.oh_units as current_units,
+    oh.cost_extension as current_cost_value,
+    oh.retail_extension as current_retail_value,
+    COALESCE(skus.specialty_shop, 0) as shop_id,
+    COALESCE(skus.as400_data.specialty_shop_description, '') as shop_name
+  FROM `sis-data-marts.data_marts.mart_current_on_hand` oh
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON oh.sku_number = skus.dim_sku_id
+  WHERE oh.oh_units > 0
+    AND oh.store_number = 64
+    AND skus.specialty_shop = 29
+),
+sales_velocity AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    SUM(fs.quantity) as units_sold,
+    AVG(fs.quantity) as avg_daily_sales
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+  GROUP BY fs.sku_id, fs.store_id
+)
+SELECT 
+  im.sku_number,
+  im.product_name,
+  im.style,
+  im.vendor,
+  im.shop_name,
+  im.current_units,
+  ROUND(im.current_cost_value, 2) as inventory_cost,
+  ROUND(im.current_cost_value * 0.25 / 365 * 90, 2) as period_carrying_cost,
+  ROUND(im.current_cost_value * 0.25, 2) as annual_carrying_cost,
+  COALESCE(sv.units_sold, 0) as units_sold_period,
+  CASE 
+    WHEN COALESCE(sv.avg_daily_sales, 0) > 0 
+    THEN ROUND(im.current_units / sv.avg_daily_sales, 1)
+    ELSE 999 
+  END as days_of_supply,
+  ROUND((im.current_retail_value - im.current_cost_value) / NULLIF(im.current_retail_value, 0) * 100, 1) as margin_pct,
+  CASE
+    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 180 THEN 'Excess Stock'
+    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 90 THEN 'Overstock'
+    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 30 THEN 'Normal'
+    ELSE 'Low Stock'
+  END as inventory_status,
+  ROUND(im.current_cost_value / NULLIF(sv.units_sold, 0) * 0.25, 2) as cost_per_unit_sold
+FROM inventory_metrics im
+LEFT JOIN sales_velocity sv ON im.sku_number = sv.sku_id AND im.store_number = sv.store_id
+WHERE im.current_cost_value > 0
+ORDER BY annual_carrying_cost DESC
+LIMIT 100
+```
+
+## 16. get_advanced_gmroi_performance
+```sql
+WITH sales_metrics AS (
+  SELECT 
+    fs.sku_id,
+    fs.store_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    MAX(skus.as400_data.vendor_name1) as vendor,
+    MAX(skus.as400_data.specialty_shop_description) as shop_name,
+    SUM(fs.quantity) as units_sold,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.cogs_extended) as total_cogs,
+    SUM(fs.price_extended - fs.cogs_extended) as gross_margin,
+    COUNT(DISTINCT fs.transaction_id) as transaction_count
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    AND fs.store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY fs.sku_id, fs.store_id
+),
+inventory_investment AS (
+  SELECT 
+    sku_number,
+    store_number,
+    AVG(oh_units) as avg_inventory_units,
+    AVG(cost_extension) as avg_inventory_cost
+  FROM `sis-data-marts.data_marts.mart_current_on_hand`
+  WHERE store_number = 64
+  GROUP BY sku_number, store_number
+)
+SELECT 
+  sm.sku_id,
+  sm.product_name,
+  sm.style,
+  sm.vendor,
+  sm.shop_name,
+  sm.units_sold,
+  ROUND(sm.total_revenue, 2) as revenue,
+  ROUND(sm.gross_margin, 2) as gross_margin,
+  ROUND(sm.gross_margin / NULLIF(sm.total_revenue, 0) * 100, 1) as margin_pct,
+  ROUND(ii.avg_inventory_cost, 2) as avg_inventory_investment,
+  CASE 
+    WHEN ii.avg_inventory_cost > 0 
+    THEN ROUND((sm.gross_margin * (365.0 / 90)) / ii.avg_inventory_cost, 2)
+    ELSE NULL
+  END as gmroi,
+  ROUND(sm.total_revenue / NULLIF(ii.avg_inventory_cost, 0), 2) as inventory_turns,
+  CASE
+    WHEN (sm.gross_margin * (365.0 / 90)) / NULLIF(ii.avg_inventory_cost, 0) >= 3 THEN 'Excellent'
+    WHEN (sm.gross_margin * (365.0 / 90)) / NULLIF(ii.avg_inventory_cost, 0) >= 2 THEN 'Good'
+    WHEN (sm.gross_margin * (365.0 / 90)) / NULLIF(ii.avg_inventory_cost, 0) >= 1 THEN 'Fair'
+    ELSE 'Poor'
+  END as gmroi_rating,
+  ROUND(sm.gross_margin / NULLIF(sm.units_sold, 0), 2) as margin_per_unit
+FROM sales_metrics sm
+INNER JOIN inventory_investment ii ON sm.sku_id = ii.sku_number AND sm.store_id = ii.store_number
+WHERE ii.avg_inventory_cost > 0
+  AND (sm.gross_margin * (365.0 / 90)) / ii.avg_inventory_cost >= 0.0
+ORDER BY gmroi DESC
+LIMIT 100
+```
+
+## 17. get_advanced_vendor_metrics
+```sql
+WITH vendor_sales AS (
+  SELECT 
+    skus.as400_data.vendor_name1 as vendor,
+    COUNT(DISTINCT fs.sku_id) as sku_count,
+    COUNT(DISTINCT fs.transaction_id) as transaction_count,
+    SUM(fs.quantity) as units_sold,
+    SUM(fs.price_extended) as total_revenue,
+    SUM(fs.price_extended - fs.cogs_extended) as gross_margin,
+    AVG((fs.price_extended - fs.cogs_extended) / NULLIF(fs.price_extended, 0)) * 100 as avg_margin_pct
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    AND fs.store_id = 64
+    AND UPPER(skus.as400_data.vendor_name1) LIKE '%NIKE%'  -- Example vendor filter
+  GROUP BY skus.as400_data.vendor_name1
+),
+vendor_inventory AS (
+  SELECT 
+    skus.as400_data.vendor_name1 as vendor,
+    COUNT(DISTINCT oh.sku_number) as inventory_skus,
+    SUM(oh.oh_units) as total_units_on_hand,
+    SUM(oh.cost_extension) as total_inventory_value,
+    AVG(oh.oh_units) as avg_units_per_sku
+  FROM `sis-data-marts.data_marts.mart_current_on_hand` oh
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON oh.sku_number = skus.dim_sku_id
+  WHERE oh.oh_units > 0
+    AND oh.store_number = 64
+  GROUP BY skus.as400_data.vendor_name1
+),
+vendor_performance AS (
+  SELECT 
+    skus.as400_data.vendor_name1 as vendor,
+    COUNT(DISTINCT CASE WHEN fs.quantity < 0 THEN fs.transaction_id END) as return_transactions,
+    SUM(CASE WHEN fs.quantity < 0 THEN ABS(fs.quantity) ELSE 0 END) as returned_units,
+    COUNT(DISTINCT DATE(fs.transaction_datetime)) as active_days
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+    AND fs.store_id = 64
+  GROUP BY skus.as400_data.vendor_name1
+)
+SELECT 
+  COALESCE(vs.vendor, vi.vendor, vp.vendor) as vendor_name,
+  COALESCE(vs.sku_count, 0) as active_skus,
+  COALESCE(vi.inventory_skus, 0) as stocked_skus,
+  COALESCE(vs.units_sold, 0) as units_sold,
+  ROUND(COALESCE(vs.total_revenue, 0), 2) as revenue,
+  ROUND(COALESCE(vs.gross_margin, 0), 2) as gross_margin,
+  ROUND(COALESCE(vs.avg_margin_pct, 0), 1) as avg_margin_pct,
+  ROUND(COALESCE(vi.total_inventory_value, 0), 2) as inventory_investment,
+  ROUND(COALESCE(vp.returned_units, 0) / NULLIF(vs.units_sold, 0) * 100, 2) as return_rate_pct,
+  ROUND(COALESCE(vs.total_revenue, 0) / NULLIF(vi.total_inventory_value, 0), 2) as inventory_turnover,
+  ROUND(COALESCE(vs.gross_margin, 0) / NULLIF(vi.total_inventory_value, 0), 2) as gmroi,
+  COALESCE(vp.active_days, 0) as days_with_sales,
+  ROUND(COALESCE(vs.total_revenue, 0) / NULLIF(vp.active_days, 0), 2) as avg_daily_revenue,
+  CASE
+    WHEN COALESCE(vp.returned_units, 0) / NULLIF(vs.units_sold, 0) > 0.1 THEN 'High Returns'
+    WHEN COALESCE(vs.gross_margin, 0) / NULLIF(vs.total_revenue, 0) < 0.2 THEN 'Low Margin'
+    WHEN COALESCE(vs.total_revenue, 0) / NULLIF(vi.total_inventory_value, 0) < 2 THEN 'Slow Moving'
+    ELSE 'Good'
+  END as vendor_status
+FROM vendor_sales vs
+FULL OUTER JOIN vendor_inventory vi ON vs.vendor = vi.vendor
+FULL OUTER JOIN vendor_performance vp ON COALESCE(vs.vendor, vi.vendor) = vp.vendor
+WHERE COALESCE(vs.vendor, vi.vendor, vp.vendor) IS NOT NULL
+  AND COALESCE(vs.total_revenue, 0) > 0
+ORDER BY revenue DESC
+LIMIT 25
+```
+
+## 18. get_advanced_forecast_accuracy
+```sql
+-- Note: This is a placeholder query that analyzes sales volatility
+-- In production, this would compare against actual forecast data
+WITH period_sales AS (
+  SELECT 
+    DATE_TRUNC(DATE(fs.transaction_datetime), WEEK) as period_start,
+    fs.sku_id,
+    fs.store_id,
+    MAX(skus.as400_data.sku_description) as product_name,
+    MAX(skus.as400_data.style) as style,
+    SUM(fs.quantity) as actual_units,
+    SUM(fs.price_extended) as actual_revenue,
+    COUNT(DISTINCT DATE(fs.transaction_datetime)) as days_in_period
+  FROM `scheels-data-marts.facts_sales.fct_sales` fs
+  LEFT JOIN `scheels-data-marts.dim_scheels.dim_skus` skus ON fs.sku_id = skus.dim_sku_id
+  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL 28 DAY)
+    AND fs.store_id = 64
+    AND skus.specialty_shop = 29
+  GROUP BY 1, 2, 3
+),
+sales_stats AS (
+  SELECT 
+    sku_id,
+    store_id,
+    product_name,
+    style,
+    AVG(actual_units) as avg_units,
+    STDDEV(actual_units) as stddev_units,
+    MIN(actual_units) as min_units,
+    MAX(actual_units) as max_units,
+    COUNT(DISTINCT period_start) as periods_count
+  FROM period_sales
+  GROUP BY 1, 2, 3, 4
+)
+SELECT 
+  sku_id,
+  product_name,
+  style,
+  ROUND(avg_units, 1) as avg_weekly_units,
+  ROUND(stddev_units, 1) as stddev_units,
+  ROUND(stddev_units / NULLIF(avg_units, 0), 2) as coefficient_of_variation,
+  min_units,
+  max_units,
+  ROUND((max_units - min_units) / NULLIF(avg_units, 0), 2) as range_ratio,
+  periods_count,
+  CASE
+    WHEN stddev_units / NULLIF(avg_units, 0) < 0.25 THEN 'Very Stable'
+    WHEN stddev_units / NULLIF(avg_units, 0) < 0.5 THEN 'Stable'
+    WHEN stddev_units / NULLIF(avg_units, 0) < 0.75 THEN 'Variable'
+    ELSE 'Highly Variable'
+  END as demand_pattern,
+  CASE
+    WHEN stddev_units / NULLIF(avg_units, 0) < 0.5 THEN 'Easy to Forecast'
+    ELSE 'Difficult to Forecast'
+  END as forecast_difficulty
+FROM sales_stats
+WHERE avg_units > 0
+ORDER BY coefficient_of_variation ASC
+LIMIT 100
+```
+
+## 19. get_otb_metrics
+```sql
+SELECT 
+  CAST(shop_id AS STRING) AS shop_id,
+  shop_name,
+  CAST(store_id AS STRING) AS store_id,
+  store_name,
+  metric_name,
+  date_month,
+  value,
+  last_updated_timestamp
+FROM `sis-sandbox-463113.OTB.OTB_at_a_glance`
+WHERE 1=1
+  AND shop_id = '29'  -- Specific shop
+  AND store_id = '64'  -- Specific store
+  AND metric_name = 'OTB Goal'  -- Specific metric
+  AND EXTRACT(YEAR FROM date_month) = 2025  -- Current year
+ORDER BY date_month DESC, shop_id, store_id, metric_name
+LIMIT 100
+```
+
+## Notes:
+1. All queries have been updated to use `scheels-data-marts` for the main sales and dimension tables
+2. The `mart_current_on_hand` and `mart_inventory_snapshots` tables remain in `sis-data-marts.data_marts`
+3. The OTB metrics query uses `sis-sandbox-463

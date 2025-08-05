@@ -21,7 +21,7 @@ steps:
         '--region=us-central1',
         '--project=sis-sandbox-463113',
         '--platform=managed',
-        '--no-allow-unauthenticated',
+        '--allow-unauthenticated',
         '--service-account=supergemini-client@sis-sandbox-463113.iam.gserviceaccount.com',
         '--port=8080'
       ]

@@ -16,9 +16,11 @@ class BigQueryUtils:
         self.project_id = getattr(config, 'bq_project', 'sis-sandbox-463113')
         self.bq_client = self._init_bigquery_client()
         
-        # Use existing llm_analytics dataset instead of creating logs dataset
-        self.query_log_table = f"{self.project_id}.llm_analytics.query_logs"
-        self.summary_log_table = f"{self.project_id}.llm_analytics.LLM_summaries"
+        # Use existing llm_analytics dataset in sis-sandbox-463113 project
+        # Note: The logging tables are always in sis-sandbox-463113, regardless of the main project
+        self.logging_project_id = 'sis-sandbox-463113'
+        self.query_log_table = f"{self.logging_project_id}.llm_analytics.query_logs"
+        self.summary_log_table = f"{self.logging_project_id}.llm_analytics.LLM_summaries"
         
         # Ensure logging tables exist (but don't create dataset since it exists)
         self._ensure_logging_tables()
@@ -274,6 +276,9 @@ class BigQueryUtils:
     def get_query_history(self, user_id: Optional[str] = None, limit: int = 50) -> List[Dict]:
         """Get recent query history from BigQuery"""
         try:
+            logger.info(f"Getting query history from BigQuery: user_id={user_id}, limit={limit}")
+            logger.info(f"Query log table: {self.query_log_table}")
+            
             where_clause = f"WHERE user_id = '{user_id}'" if user_id else ""
             
             query = f"""
@@ -292,6 +297,7 @@ class BigQueryUtils:
                 LIMIT {limit}
             """
             
+            logger.debug(f"Running query: {query}")
             results = self.bq_client.query(query).result()
             
             history = []

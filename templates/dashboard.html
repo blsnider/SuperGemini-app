@@ -25,7 +25,7 @@
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 20px;
-            padding: 30px;
+            padding: 20px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.2);
             min-height: calc(100vh - 40px);
         }
@@ -34,14 +34,14 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
             border-bottom: 2px solid #e0e7ff;
         }
         
         .header h1 {
             color: #333;
-            font-size: 2.2em;
+            font-size: 1.8em;
             font-weight: 700;
             margin: 0;
         }
@@ -83,17 +83,17 @@
         
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
         }
         
         .metric-card {
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            border-radius: 12px;
-            padding: 24px;
+            border-radius: 8px;
+            padding: 10px 15px;
             text-align: center;
-            border-left: 4px solid #667eea;
+            border-left: 3px solid #667eea;
             transition: all 0.3s ease;
         }
         
@@ -103,17 +103,25 @@
         }
         
         .metric-value {
-            font-size: 2.5em;
+            font-size: 1.4em;
             font-weight: 700;
             color: #333;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
+        }
+        
+        .metric-value.positive {
+            color: #16a34a;
+        }
+        
+        .metric-value.negative {
+            color: #dc2626;
         }
         
         .metric-label {
             color: #666;
-            font-size: 0.9em;
+            font-size: 0.75em;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
         }
         
         .chart-section {
@@ -199,6 +207,31 @@
         .status-indicator.healthy { border-left: 4px solid #10b981; }
         .status-indicator.unhealthy { border-left: 4px solid #ef4444; }
         
+        /* Version Badge */
+        .version-badge {
+            position: fixed;
+            top: 20px;
+            right: 140px; /* Position to the left of status indicator */
+            background: rgba(102, 126, 234, 0.9);
+            color: #ffffff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 700;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            cursor: help;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .version-badge:hover {
+            background: rgba(118, 75, 162, 0.9);
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+        
         /* Table styling for dashboard charts - matching chat page */
         .chart-placeholder table {
             width: 100%;
@@ -272,6 +305,98 @@
             white-space: nowrap;
         }
         
+        /* OTB Table Styling */
+        .otb-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        .otb-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .otb-title {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .otb-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .otb-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+        
+        .otb-table th:not(:first-child) {
+            text-align: right;
+        }
+        
+        .otb-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e0e7ff;
+            font-size: 13px;
+        }
+        
+        .otb-table td:first-child {
+            font-weight: 600;
+            color: #4b5563;
+        }
+        
+        .otb-table td:not(:first-child) {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .otb-table tr:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .otb-table tr:nth-child(even) {
+            background: rgba(248, 250, 252, 0.5);
+        }
+        
+        /* Color coding for OTB values */
+        .otb-value.positive {
+            color: #059669;
+            font-weight: 600;
+        }
+        
+        .otb-value.negative {
+            color: #dc2626;
+            font-weight: 600;
+        }
+        
+        .otb-value.percentage {
+            color: #6366f1;
+            font-weight: 600;
+        }
+        
+        .otb-loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        
         /* MCP Toolset Icons */
         .mcp-toolsets-grid {
             display: grid;
@@ -339,6 +464,44 @@
         .mcp-tool-icon.loaded .mcp-status-dot {
             background: #10b981;
             box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        
+        /* Row Count Badge */
+        .row-count-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(99, 102, 241, 0.9);
+            color: white;
+            font-size: 24px;
+            font-weight: 700;
+            padding: 8px 12px;
+            border-radius: 12px;
+            min-width: 40px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+            backdrop-filter: blur(2px);
+            display: none;
+            z-index: 2;
+        }
+        
+        .mcp-tool-icon.has-count .row-count-badge {
+            display: block;
+        }
+        
+        .mcp-tool-icon.has-count .mcp-icon {
+            opacity: 0.3;
+        }
+        
+        .row-count-badge.critical {
+            background: rgba(239, 68, 68, 0.9);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
+        .row-count-badge.warning {
+            background: rgba(245, 158, 11, 0.9);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
         }
         
         /* Modal Styles */
@@ -478,6 +641,9 @@
         <span id="statusText">Checking...</span>
     </div>
     
+    <!-- Version Badge -->
+    <div class="version-badge" title="Version 2.7.0 - Hidden cost/snapshot UI, fixed OTB metrics param">v2.7.0</div>
+    
     <div class="dashboard-container">
         <div class="header">
             <div>
@@ -495,6 +661,12 @@
                         <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Shop #</label>
                         <input type="number" id="shopNumber" placeholder="All" 
                                style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 100px;">
+                    </div>
+                    <!-- Snapshot Date Hidden per requirements -->
+                    <div style="display: none;">
+                        <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Snapshot Date</label>
+                        <input type="date" id="snapshotDate" 
+                               style="padding: 8px 12px; border: 2px solid #e0e7ff; border-radius: 8px; width: 150px;">
                     </div>
                     <div style="display: flex; flex-direction: column;">
                         <label style="font-size: 0.8em; color: #666; margin-bottom: 2px;">Compare Store #</label>
@@ -520,35 +692,26 @@
                     <div class="metric-value" id="totalRevenue">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Total Revenue</div>
+                    <div class="metric-label">Revenue YoY %</div>
                 </div>
                 
                 <div class="metric-card">
                     <div class="metric-value" id="totalMargin">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Margin %</div>
+                    <div class="metric-label">Margin YoY %</div>
                 </div>
                 
                 <div class="metric-card">
                     <div class="metric-value" id="totalUnits">
                         <span class="loading-spinner"></span>
                     </div>
-                    <div class="metric-label">Total Units</div>
+                    <div class="metric-label">Units YoY %</div>
                 </div>
                 
-                <div class="metric-card">
-                    <div class="metric-value" id="totalProfit">
-                        <span class="loading-spinner"></span>
-                    </div>
-                    <div class="metric-label">Total Profit</div>
-                </div>
-                
-                <div class="metric-card">
-                    <div class="metric-value" id="totalCOGS">
-                        <span class="loading-spinner"></span>
-                    </div>
-                    <div class="metric-label">Total COGS</div>
+                <!-- OTB Metrics will be inserted here -->
+                <div id="otbMetricsContainer" style="grid-column: 1 / -1;">
+                    <!-- OTB table will be dynamically loaded -->
                 </div>
             </div>
             
@@ -584,28 +747,39 @@
         let currentShopId = 0;
         let currentCompareStoreId = 0;
         
-        // MCP Toolset definitions
+        // MCP Toolset definitions - matching tools.yaml with exact names
         const mcpToolsets = [
-            { id: 'get_top_selling_items', icon: '🏆', label: 'Top Selling', description: 'Best performing items by revenue' },
-            { id: 'get_units_vs_dollars_comparison', icon: '💹', label: 'Units vs $', description: 'Compare unit vs revenue performance' },
-            { id: 'get_shop_performance', icon: '🏪', label: 'Shop Analysis', description: 'Performance metrics by shop' },
-            { id: 'get_sell_through_rates', icon: '📊', label: 'Sell Through', description: 'Inventory sell-through rates' },
-            { id: 'get_time_period_comparison', icon: '📅', label: 'Time Periods', description: 'Compare across time periods' },
-            { id: 'get_inventory_status', icon: '📦', label: 'Inventory', description: 'Current inventory levels' },
-            { id: 'get_current_inventory_status', icon: '📋', label: 'Current Stock', description: 'Real-time on-hand inventory' },
-            { id: 'get_inventory_risk_assessment', icon: '⚠️', label: 'Risk Analysis', description: 'Inventory risk priorities' },
-            { id: 'get_out_of_stock_items', icon: '🚨', label: 'Out of Stock', description: 'Items with zero inventory' },
+            // { id: 'get_otb_metrics', icon: '💵', label: 'OTB Metrics', description: 'Open To Buy budget metrics and goals' }, // Hidden as requested
+            { id: 'get_top_selling_items', icon: '🏆', label: 'Top Selling Items', description: 'Best performing items by revenue' },
+            { id: 'get_units_vs_dollars_comparison', icon: '💹', label: 'Units vs Dollars', description: 'Compare unit vs revenue performance' },
+            { id: 'get_shop_performance', icon: '🏪', label: 'Shop Performance', description: 'Performance metrics by shop' },
             { id: 'get_sales_trends', icon: '📈', label: 'Sales Trends', description: 'Sales performance over time' },
-            { id: 'get_top_margin_items', icon: '💰', label: 'Top Margins', description: 'Highest profit margin items' },
-            { id: 'get_overstock_items', icon: '📦', label: 'Overstock', description: 'Excess inventory items' },
-            { id: 'get_comparison_analysis', icon: '🔄', label: 'Comparisons', description: 'Store/period comparisons' }
+            { id: 'get_sell_through_rates', icon: '📊', label: 'Sell Through Rates', description: 'Inventory sell-through rates' },
+            { id: 'get_inventory_status', icon: '📦', label: 'Inventory Status', description: 'Current inventory with risk levels' },
+            { id: 'get_1Y_out_of_stock_items', icon: '🚨', label: '1Y Out of Stock', description: '1Y rated items with zero inventory' },
+            { id: 'get_overstock_items', icon: '📉', label: 'Overstock Items', description: 'Excess inventory items' },
+            { id: 'get_top_selling_item_comparison', icon: '🔍', label: 'Store Comparison', description: 'Compare top items between stores' },
+            { id: 'get_comparison_analysis', icon: '🔄', label: 'Comparison Analysis', description: 'Store/period comparisons' },
+            // Advanced Analytics Tools
+            { id: 'get_advanced_stockout_analysis', icon: '🚫', label: 'Advanced Stockout Analysis', description: 'Stockouts & lost sales opportunities' },
+            { id: 'get_advanced_carrying_costs', icon: '💸', label: 'Advanced Carrying Costs', description: 'Inventory holding costs & overstock expense' },
+            { id: 'get_advanced_gmroi_performance', icon: '💎', label: 'Advanced GMROI Performance', description: 'Gross margin return on inventory' },
+            { id: 'get_advanced_vendor_metrics', icon: '🏭', label: 'Advanced Vendor Metrics', description: 'Vendor performance & reliability metrics' },
+            { id: 'get_sales_variance_analysis', icon: '📊', label: 'Sales Variance Analysis', description: 'YoY sales variance by shop/category/store' },
+            { id: 'get_margin_variance_report', icon: '💹', label: 'Margin Variance Report', description: 'TY vs LY margin comparisons by vendor/shop' }
         ];
         
         // Initialize dashboard on page load
         document.addEventListener('DOMContentLoaded', function() {
             checkSystemStatus();
             initializeMCPToolsets();
+            initializeSnapshotDate();
             loadKeyMetrics();
+            
+            // Lazy load tool data for initial state (all stores/shops)
+            setTimeout(() => {
+                mcpToolsets.forEach(tool => lazyLoadToolData(tool));
+            }, 500);
             
             // Check system status every 30 seconds
             setInterval(checkSystemStatus, 30000);
@@ -652,13 +826,20 @@
                 const iconDiv = document.getElementById(`tool-${tool.id}`);
                 if (iconDiv) {
                     iconDiv.classList.add('loading');
-                    iconDiv.classList.remove('loaded');
+                    iconDiv.classList.remove('loaded', 'has-count');
+                    
+                    // Reset badge if it exists
+                    const badge = iconDiv.querySelector('.row-count-badge');
+                    if (badge) {
+                        badge.textContent = '';
+                        badge.classList.remove('critical', 'warning');
+                    }
                 }
             });
             
             // Reload metrics and lazy load tool data
             Promise.all([
-                loadKeyMetrics(),
+                loadKeyMetrics(),  // This will also load OTB metrics
                 ...mcpToolsets.map(tool => lazyLoadToolData(tool))
             ]).finally(() => {
                 // Reset button state
@@ -666,6 +847,19 @@
                 applyButton.innerHTML = 'Apply';
                 applyButton.style.background = '#34d399';
             });
+        }
+        
+        function initializeSnapshotDate() {
+            // Set default snapshot date to yesterday
+            const snapshotDateInput = document.getElementById('snapshotDate');
+            if (snapshotDateInput) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                // Format as YYYY-MM-DD
+                const formattedDate = yesterday.toISOString().split('T')[0];
+                snapshotDateInput.value = formattedDate;
+                console.log('Default snapshot date set to:', formattedDate);
+            }
         }
         
         async function checkSystemStatus() {
@@ -706,6 +900,7 @@
                     <div class="mcp-status-dot"></div>
                     <div class="mcp-icon">${tool.icon}</div>
                     <div class="mcp-tool-label">${tool.label}</div>
+                    ${(tool.id === 'get_1Y_out_of_stock_items' || tool.id === 'get_overstock_items') ? '<div class="row-count-badge"></div>' : ''}
                 `;
                 
                 grid.appendChild(iconDiv);
@@ -721,8 +916,17 @@
                     updateMetric('totalRevenue', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
                     updateMetric('totalMargin', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
                     updateMetric('totalUnits', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
-                    updateMetric('totalProfit', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
-                    updateMetric('totalCOGS', '<span style="font-size: 0.8em;">Select Store/Shop</span>');
+                    // Also show prompt for OTB metrics
+                    const otbContainer = document.getElementById('otbMetricsContainer');
+                    if (otbContainer) {
+                        otbContainer.innerHTML = `
+                            <div class="otb-container">
+                                <div class="otb-loading" style="color: #6b7280;">
+                                    <div style="font-size: 16px;">Select Store/Shop and click Apply to view OTB metrics</div>
+                                </div>
+                            </div>
+                        `;
+                    }
                     return;
                 }
                 
@@ -734,11 +938,10 @@
                 const data = await response.json();
                 
                 if (data.success && data.metrics) {
-                    updateMetric('totalRevenue', formatCurrency(data.metrics.total_revenue));
-                    updateMetric('totalMargin', (data.metrics.margin_pct || 0).toFixed(1) + '%');
-                    updateMetric('totalUnits', (data.metrics.total_units || 0).toLocaleString());
-                    updateMetric('totalProfit', formatCurrency(data.metrics.total_profit));
-                    updateMetric('totalCOGS', formatCurrency(data.metrics.total_cogs));
+                    // Update YoY metrics with color coding
+                    updateYoYMetric('totalRevenue', data.metrics.revenue_yoy_pct || 0);
+                    updateYoYMetric('totalMargin', data.metrics.margin_yoy_pct || 0);
+                    updateYoYMetric('totalUnits', data.metrics.units_yoy_pct || 0);
                     console.log('Metrics updated successfully');
                 } else {
                     throw new Error(data.error || 'Failed to load metrics');
@@ -746,12 +949,151 @@
             } catch (error) {
                 console.error('Error loading metrics:', error);
                 // Show placeholder data or error state
-                updateMetric('totalRevenue', '$--');
+                updateMetric('totalRevenue', '--%');
                 updateMetric('totalMargin', '--%');
-                updateMetric('totalUnits', '--');
-                updateMetric('totalProfit', '$--');
-                updateMetric('totalCOGS', '$--');
+                updateMetric('totalUnits', '--%');
             }
+            
+            // Load OTB metrics separately only if filters are applied
+            if (currentStoreId || currentShopId) {
+                loadOTBMetrics();
+            }
+        }
+        
+        async function loadOTBMetrics() {
+            try {
+                console.log('Loading OTB metrics...');
+                
+                const otbContainer = document.getElementById('otbMetricsContainer');
+                if (!otbContainer) return;
+                
+                // Show loading state
+                otbContainer.innerHTML = `
+                    <div class="otb-container">
+                        <div class="otb-loading">
+                            <span class="loading-spinner"></span>
+                            <div style="margin-top: 10px;">Loading OTB metrics...</div>
+                        </div>
+                    </div>
+                `;
+                
+                // Build query params with current filters
+                const params = new URLSearchParams();
+                if (currentStoreId) params.append('store_id', currentStoreId);
+                if (currentShopId) params.append('shop_id', currentShopId);
+                
+                // Fetch OTB data
+                const response = await fetch('/api/dashboard/otb-metrics?' + params.toString());
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    displayOTBMetrics(result.data);
+                } else {
+                    throw new Error(result.error || 'Failed to load OTB metrics');
+                }
+            } catch (error) {
+                console.error('Error loading OTB metrics:', error);
+                const otbContainer = document.getElementById('otbMetricsContainer');
+                if (otbContainer) {
+                    otbContainer.innerHTML = `
+                        <div class="otb-container">
+                            <div class="otb-loading" style="color: #dc2626;">
+                                <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+                                <div>Failed to load OTB metrics</div>
+                                <div style="font-size: 12px; margin-top: 5px;">${error.message}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+        
+        function displayOTBMetrics(data) {
+            const otbContainer = document.getElementById('otbMetricsContainer');
+            if (!otbContainer) return;
+            
+            // Check if there's a message (no data case)
+            if (data.message && (!data.formatted_table || data.formatted_table.length === 0)) {
+                otbContainer.innerHTML = `
+                    <div class="otb-container">
+                        <div class="otb-loading" style="color: #6b7280;">
+                            <div style="font-size: 16px;">${data.message}</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Check if no data
+            if (!data.formatted_table || data.formatted_table.length === 0) {
+                otbContainer.innerHTML = `
+                    <div class="otb-container">
+                        <div class="otb-loading" style="color: #6b7280;">
+                            <div style="font-size: 16px;">No OTB data available</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Build the OTB table HTML
+            let tableHTML = `
+                <div class="otb-container">
+                    <div class="otb-header">
+                        <h3 class="otb-title">📊 OTB Metrics Overview (Current + Next 2 Months)</h3>
+                        <button class="refresh-button" onclick="loadOTBMetrics()" title="Refresh OTB Metrics">
+                            <span style="font-size: 16px;">🔄</span>
+                            <span>Refresh</span>
+                        </button>
+                    </div>
+                    <table class="otb-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+            `;
+            
+            // Add month columns
+            data.months.forEach(month => {
+                tableHTML += `<th>${month}</th>`;
+            });
+            
+            tableHTML += `
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // Add data rows
+            data.formatted_table.forEach(row => {
+                tableHTML += '<tr>';
+                tableHTML += `<td>${row.metric}</td>`;
+                
+                data.months.forEach(month => {
+                    const value = row[month] || '$0';
+                    let valueClass = 'otb-value';
+                    
+                    // Apply styling based on value type
+                    if (value.includes('%')) {
+                        valueClass += ' percentage';
+                    } else if (value.includes('($')) {
+                        valueClass += ' negative';
+                    } else if (value !== '$0' && !value.includes('N/A')) {
+                        valueClass += ' positive';
+                    }
+                    
+                    tableHTML += `<td class="${valueClass}">${value}</td>`;
+                });
+                
+                tableHTML += '</tr>';
+            });
+            
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            
+            otbContainer.innerHTML = tableHTML;
         }
         
         async function lazyLoadToolData(tool) {
@@ -760,26 +1102,28 @@
             try {
                 console.log(`Lazy loading data for ${tool.id}...`);
                 
-                // Build query parameters
-                const query = {
-                    store_id: currentStoreId || 0,
-                    shop_id: currentShopId || 0,
-                    limit: 50  // Default limit for icon preview
-                };
-                
                 // Build query with embedded parameters
                 let queryText = `Execute MCP tool: ${tool.id}`;
                 if (currentStoreId) queryText += ` for store ${currentStoreId}`;
                 if (currentShopId) queryText += ` shop ${currentShopId}`;
                 queryText += ' limit 50';
                 
+                // Get snapshot date if available
+                const snapshotDateInput = document.getElementById('snapshotDate');
+                const requestBody = {
+                    query: queryText,
+                    model: 'gemini-2.0-flash-exp',  // Use fast model for data loading
+                    mcp_tool: tool.id  // Specify the exact tool to use
+                };
+                
+                if (snapshotDateInput && snapshotDateInput.value) {
+                    requestBody.snapshot_date = snapshotDateInput.value;
+                }
+                
                 const response = await fetch('/api/chat/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: queryText,
-                        model: 'gemini-2.5-flash'  // Use fast model for data loading
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();
@@ -791,12 +1135,18 @@
                         raw_data: data.results_data || data.results,
                         timestamp: new Date(),
                         row_count: data.row_count,
-                        query: query
+                        query: queryText
                     };
                     
                     // Mark as loaded
                     iconDiv.classList.remove('loading');
                     iconDiv.classList.add('loaded');
+                    
+                    // Update row count badge for specific tools
+                    if (tool.id === 'get_1Y_out_of_stock_items' || tool.id === 'get_overstock_items') {
+                        console.log(`Updating badge for ${tool.id} with count: ${data.row_count}`);
+                        updateRowCountBadge(tool.id, data.row_count || 0);
+                    }
                     
                     console.log(`${tool.id} loaded successfully with ${data.row_count} rows`);
                 } else {
@@ -822,11 +1172,16 @@
             modalIcon.textContent = tool.icon;
             
             // Show current filters
+            const snapshotDateInput = document.getElementById('snapshotDate');
+            const snapshotDateText = snapshotDateInput && snapshotDateInput.value ? 
+                `<span>Date: ${snapshotDateInput.value}</span>` : '';
+                
             modalFilters.innerHTML = `
                 <label>Filters:</label>
                 ${currentStoreId ? `<span>Store #${currentStoreId}</span>` : '<span>All Stores</span>'}
                 ${currentShopId ? `<span>Shop #${currentShopId}</span>` : '<span>All Shops</span>'}
                 ${currentCompareStoreId ? `<span>vs Store #${currentCompareStoreId}</span>` : ''}
+                ${snapshotDateText}
             `;
             
             // Show loading state
@@ -854,13 +1209,22 @@
                 // Build query with tool-specific parameters
                 let queryText = buildToolQueryText(tool.id);
                 
+                // Get snapshot date if available
+                const snapshotDateInput = document.getElementById('snapshotDate');
+                const requestBody = {
+                    query: queryText,
+                    model: 'gemini-2.0-flash-exp',
+                    mcp_tool: tool.id
+                };
+                
+                if (snapshotDateInput && snapshotDateInput.value) {
+                    requestBody.snapshot_date = snapshotDateInput.value;
+                }
+                
                 const response = await fetch('/api/chat/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: queryText,
-                        model: 'gemini-2.5-flash'
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 
                 const data = await response.json();
@@ -877,6 +1241,11 @@
                         row_count: data.row_count,
                         query: query
                     };
+                    
+                    // Update row count badge for specific tools
+                    if (tool.id === 'get_1Y_out_of_stock_items' || tool.id === 'get_overstock_items') {
+                        updateRowCountBadge(tool.id, data.row_count || 0);
+                    }
                 } else {
                     throw new Error(data.error || 'Failed to load data');
                 }
@@ -903,38 +1272,54 @@
             
             // Add tool-specific parameters
             switch(toolId) {
+                case 'get_otb_metrics':
+                    return {
+                        shop_id: null,
+                        store_id: 'TOTAL',
+                        metric_name: null,
+                        year: new Date().getFullYear()
+                    };
                 case 'get_top_selling_items':
-                    return { ...baseQuery, limit: 100, metric_type: 'revenue', days_back: 42 };
+                    return { ...baseQuery, limit: 100, metric_type: 'revenue', days_back: 30 };
                 case 'get_inventory_status':
                     return { ...baseQuery, limit: 100, risk_level: 'all' };
                 case 'get_sales_trends':
                     return { ...baseQuery, days_back: 42, granularity: 'daily' };
-                case 'get_top_margin_items':
-                    return { ...baseQuery, limit: 100, min_revenue: 500, days_back: 42 };
                 case 'get_overstock_items':
                     return { ...baseQuery, limit: 100, days_supply_threshold: 90 };
-                case 'get_out_of_stock_items':
-                    return { ...baseQuery, limit: 100, min_sales_30d: 1 };
                 case 'get_comparison_analysis':
                     return { 
                         ...baseQuery, 
                         comparison_type: 'store', 
                         entity1_id: currentStoreId || 64, 
-                        entity2_id: currentCompareStoreId || 65, 
+                        entity2_id: currentCompareStoreId || 0, 
                         limit: 25 
                     };
-                case 'get_inventory_risk_assessment':
-                    return { ...baseQuery, limit: 100, min_priority_score: 50 };
-                case 'get_current_inventory_status':
-                    return { ...baseQuery, limit: 100, sort_by: 'retail_value' };
                 case 'get_shop_performance':
                     return { ...baseQuery, days_back: 42, metric_focus: 'revenue' };
                 case 'get_sell_through_rates':
                     return { ...baseQuery, days_period: 30, min_beginning_inventory: 10 };
-                case 'get_time_period_comparison':
-                    return { ...baseQuery, comparison_type: 'mom', aggregation_level: 'daily' };
                 case 'get_units_vs_dollars_comparison':
                     return { ...baseQuery, days_back: 42, limit: 20 };
+                case 'get_top_selling_item_comparison':
+                    return { 
+                        store1_id: currentStoreId || 64, 
+                        store2_id: currentCompareStoreId || 0,
+                        shop_id: currentShopId || 0,
+                        days_back: 42,
+                        limit: 50
+                    };
+                case 'get_1Y_out_of_stock_items':
+                    return { ...baseQuery, limit: 100, min_sales_30d: 1 };
+                // Advanced Analytics Tools
+                case 'get_advanced_stockout_analysis':
+                    return { ...baseQuery, min_stockouts: 1, days_back: 60, limit: 9999 };
+                case 'get_advanced_carrying_costs':
+                    return { ...baseQuery, carrying_pct: 0.25, days_back: 90, limit: 9999 };
+                case 'get_advanced_gmroi_performance':
+                    return { ...baseQuery, days_back: 90, min_gmroi: 0.0, limit: 9999 };
+                case 'get_advanced_vendor_metrics':
+                    return { vendor_name: '', store_id: currentStoreId || 0, days_back: 90, limit: 25 };
                 default:
                     return { ...baseQuery, limit: 100 };
             }
@@ -944,6 +1329,12 @@
             // Build natural language query for tool execution
             let query = `Execute MCP tool: ${toolId}`;
             
+            // Special handling for OTB metrics
+            if (toolId === 'get_otb_metrics') {
+                const currentYear = new Date().getFullYear();
+                return `Execute MCP tool: get_otb_metrics shop_id=null store_id='TOTAL' metric_name=null year=${currentYear}`;
+            }
+            
             // Add store/shop filters
             if (currentStoreId) query += ` for store ${currentStoreId}`;
             if (currentShopId) query += ` shop ${currentShopId}`;
@@ -951,30 +1342,21 @@
             // Add tool-specific parameters in natural language
             switch(toolId) {
                 case 'get_top_selling_items':
-                    query += ' top 100 by revenue last 42 days';
+                    query += ' top 100 by revenue last 30 days';
                     break;
                 case 'get_sales_trends':
                     query += ' daily trends last 42 days';
                     break;
-                case 'get_top_margin_items':
-                    query += ' top 100 margin items minimum revenue 500 last 42 days';
-                    break;
                 case 'get_overstock_items':
                     query += ' overstock items 90+ days supply limit 100';
                     break;
-                case 'get_out_of_stock_items':
-                    query += ' out of stock with sales last 30 days limit 100';
+                case 'get_1Y_out_of_stock_items':
+                    query += ' 1Y out of stock items limit 100';
                     break;
                 case 'get_comparison_analysis':
                     const store1 = currentStoreId || 64;
-                    const store2 = currentCompareStoreId || 65;
+                    const store2 = currentCompareStoreId || 0;
                     query += ` compare store ${store1} vs store ${store2} limit 25`;
-                    break;
-                case 'get_inventory_risk_assessment':
-                    query += ' inventory risk priority score 50+ limit 100';
-                    break;
-                case 'get_current_inventory_status':
-                    query += ' current on-hand inventory sorted by retail value limit 100';
                     break;
                 case 'get_shop_performance':
                     query += ' shop performance by revenue last 42 days';
@@ -982,11 +1364,29 @@
                 case 'get_sell_through_rates':
                     query += ' sell through rates 30 day period minimum 10 beginning inventory';
                     break;
-                case 'get_time_period_comparison':
-                    query += ' month over month comparison daily level';
-                    break;
                 case 'get_units_vs_dollars_comparison':
                     query += ' units vs dollars comparison last 42 days top 20';
+                    break;
+                case 'get_top_selling_item_comparison':
+                    const s1 = currentStoreId || 64;
+                    const s2 = currentCompareStoreId || 0;
+                    query += ` compare top items store ${s1} vs store ${s2} shop ${currentShopId || 0} last 42 days limit 50`;
+                    break;
+                case 'get_inventory_status':
+                    query += ' inventory status all risk levels limit 100';
+                    break;
+                // Advanced Analytics Tools
+                case 'get_advanced_stockout_analysis':
+                    query += ' advanced stockout analysis last 60 days';
+                    break;
+                case 'get_advanced_carrying_costs':
+                    query += ' advanced carrying costs 25% rate last 90 days';
+                    break;
+                case 'get_advanced_gmroi_performance':
+                    query += ' advanced GMROI performance last 90 days';
+                    break;
+                case 'get_advanced_vendor_metrics':
+                    query += ' advanced vendor metrics all vendors last 90 days top 25';
                     break;
                 default:
                     query += ' limit 100';
@@ -1125,6 +1525,24 @@
             }
         }
         
+        function updateYoYMetric(metricId, percentage) {
+            const element = document.getElementById(metricId);
+            if (element) {
+                const formattedPct = percentage.toFixed(1) + '%';
+                element.innerHTML = formattedPct;
+                
+                // Remove existing classes
+                element.classList.remove('positive', 'negative');
+                
+                // Add color coding
+                if (percentage > 0) {
+                    element.classList.add('positive');
+                } else if (percentage < 0) {
+                    element.classList.add('negative');
+                }
+            }
+        }
+        
         function formatCurrency(amount) {
             if (amount === null || amount === undefined || isNaN(amount)) {
                 return '$0';
@@ -1135,6 +1553,49 @@
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0
             }).format(amount);
+        }
+        
+        function updateRowCountBadge(toolId, rowCount) {
+            console.log(`updateRowCountBadge called for ${toolId} with count ${rowCount}`);
+            const iconDiv = document.getElementById(`tool-${toolId}`);
+            if (!iconDiv) {
+                console.error(`Could not find icon div for tool-${toolId}`);
+                return;
+            }
+            
+            const badge = iconDiv.querySelector('.row-count-badge');
+            if (!badge) {
+                console.error(`Could not find badge for ${toolId}`);
+                return;
+            }
+            
+            // Update the count
+            badge.textContent = rowCount > 999 ? '999+' : rowCount.toString();
+            
+            // Add appropriate class based on count
+            iconDiv.classList.add('has-count');
+            
+            // Remove existing color classes
+            badge.classList.remove('critical', 'warning');
+            
+            // Apply color based on tool type and count
+            if (toolId === 'get_1Y_out_of_stock_items') {
+                // For 1Y out of stock, higher numbers are more critical
+                if (rowCount > 20) {
+                    badge.classList.add('critical');
+                } else if (rowCount > 10) {
+                    badge.classList.add('warning');
+                }
+            } else if (toolId === 'get_overstock_items') {
+                // For overstock items, higher numbers indicate more excess inventory
+                if (rowCount > 50) {
+                    badge.classList.add('critical');
+                } else if (rowCount > 25) {
+                    badge.classList.add('warning');
+                }
+            }
+            
+            console.log(`Badge updated for ${toolId}: text="${badge.textContent}", classes="${badge.className}"`);
         }
         
         

@@ -2,10 +2,14 @@
 from flask import Flask, render_template, request, jsonify, session
 import os
 import logging
+import json
 from dataclasses import dataclass
 from dotenv import load_dotenv
 import traceback
 import sys
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+
 
 # Load environment variables
 load_dotenv()
@@ -380,11 +384,16 @@ def api_chat_message():
         query = data.get('query')
         model = data.get('model')
         mcp_tool = data.get('mcp_tool')  # Get explicit MCP tool selection
+        snapshot_date = data.get('snapshot_date')  # Get snapshot date for inventory tools
+        
+        # Debug logging
+        logger.info(f"📥 Received request data: {json.dumps(data, indent=2)}")
+        logger.info(f"📅 Snapshot date from request: {snapshot_date}")
         
         if not query:
             return jsonify({'success': False, 'error': 'Query is required'}), 400
             
-        response = get_chatbot().chat(query, model, mcp_tool=mcp_tool)
+        response = get_chatbot().chat(query, model, mcp_tool=mcp_tool, snapshot_date=snapshot_date)
         return jsonify(response)
         
     except Exception as e:
@@ -418,20 +427,27 @@ def api_get_mcp_tools():
         if hasattr(bot, 'tools') and isinstance(bot.tools, dict):
             # Map tool names to user-friendly descriptions
             tool_descriptions = {
-                'get_top_selling_items': 'Top Selling Items',
-                'get_units_vs_dollars_comparison': 'Units vs Dollars Comparison',
-                'get_shop_performance': 'Shop Performance Analysis',
-                'get_sell_through_rates': 'Sell-Through Rate Analysis',
-                'get_time_period_comparison': 'Time Period Comparison',
-                'get_inventory_status': 'Inventory Status',
-                'get_current_inventory_status': 'Current Inventory Status',
-                'get_inventory_risk_assessment': 'Inventory Risk Assessment',
-                'get_out_of_stock_items': 'Out of Stock Items',
-                'get_sales_trends': 'Sales Trends',
-                'get_top_margin_items': 'Top Margin Items',
-                'get_overstock_items': 'Overstock Analysis',
-                'get_comparison_analysis': 'Store/Shop Comparison',
-                'get_return_analysis': 'Return Analysis'
+                'get_top_selling_items': 'get_top_selling_items',
+                'get_top_selling_item_comparison': 'get_top_selling_item_comparison',
+                'get_units_vs_dollars_comparison': 'get_units_vs_dollars_comparison',
+                'get_shop_performance': 'get_shop_performance',
+                'get_1Y_out_of_stock_items': 'get_1Y_out_of_stock_items',
+                'get_sales_trends': 'get_sales_trends',
+                'get_sell_through_rates': 'get_sell_through_rates',
+                'get_time_period_comparison': 'get_time_period_comparison',
+                'get_inventory_status': 'get_inventory_status',
+                'get_top_margin_items': 'get_top_margin_items',
+                'get_overstock_items': 'get_overstock_items',
+                'get_comparison_analysis': 'get_comparison_analysis',
+                'get_advanced_inventory_turnover': 'get_advanced_inventory_turnover',
+                'get_advanced_stockout_analysis': 'get_advanced_stockout_analysis',
+                'get_advanced_carrying_costs': 'get_advanced_carrying_costs',
+                'get_advanced_gmroi_performance': 'get_advanced_gmroi_performance',
+                'get_advanced_vendor_metrics': 'get_advanced_vendor_metrics',
+                'get_advanced_forecast_accuracy': 'get_advanced_forecast_accuracy',
+                'get_otb_metrics': 'get_otb_metrics',
+                'get_sales_variance_analysis': 'get_sales_variance_analysis',
+                'get_margin_variance_report': 'get_margin_variance_report'
             }
             
             for tool_name in sorted(bot.tools.keys()):
@@ -468,6 +484,86 @@ def api_generate_summary():
         
     except Exception as e:
         logger.error(f"Summary generation error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/mcp/execute', methods=['POST'])
+def api_execute_mcp_tool():
+    """Execute MCP tool directly with parameters"""
+    try:
+        data = request.get_json()
+        tool_name = data.get('tool')
+        parameters = data.get('parameters', {})
+        
+        if not tool_name:
+            return jsonify({'success': False, 'error': 'No tool specified'}), 400
+        
+        bot = get_chatbot()
+        if not bot or not bot.toolbox_enabled:
+            return jsonify({
+                'success': False,
+                'error': 'MCP toolbox not enabled'
+            }), 500
+        
+        # Check if tool exists
+        if tool_name not in bot.tools:
+            return jsonify({
+                'success': False,
+                'error': f'Tool {tool_name} not found'
+            }), 404
+        
+        # Execute the MCP tool directly
+        tool = bot.tools[tool_name]
+        
+        try:
+            # Call the tool with parameters
+            logger.info(f"Executing MCP tool directly: {tool_name} with params: {parameters}")
+            result = tool(**parameters)
+            
+            # Process the result into DataFrame
+            df = bot._process_mcp_result(result, tool_name)
+            
+            if df is None or df.empty:
+                return jsonify({
+                    'success': True,
+                    'results': [],
+                    'row_count': 0,
+                    'has_data': False,
+                    'message': 'Query executed successfully but returned no data',
+                    'tool_name': tool_name,
+                    'parameters': parameters
+                })
+            
+            # Store the last tool used for formatting
+            bot.last_tool_used = tool_name
+            
+            # Format the results
+            results = bot._format_results(df)
+            
+            # Calculate summary statistics
+            summary_stats = bot._calculate_summary_statistics(df)
+            
+            return jsonify({
+                'success': True,
+                'results': results,
+                'results_data': results,
+                'row_count': len(df),
+                'total_rows': len(df),
+                'has_data': True,
+                'tool_name': tool_name,
+                'parameters': parameters,
+                'summary_statistics': summary_stats,
+                'columns': list(df.columns) if not df.empty else []
+            })
+            
+        except Exception as tool_error:
+            logger.error(f"Tool execution error: {tool_error}")
+            return jsonify({
+                'success': False,
+                'error': f'Tool execution failed: {str(tool_error)}'
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"MCP tool execution error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/mcp/test')
@@ -554,113 +650,310 @@ def api_stock_alerts():
 
 @app.route('/api/dashboard/metrics')
 def api_dashboard_metrics():
-    """Get dashboard metrics - API endpoint"""
+    """Get dashboard metrics - API endpoint with foolproof YoY analysis"""
     try:
-        # Get store and shop IDs from query parameters
         store_id = request.args.get('store_id', 0, type=int)
         shop_id = request.args.get('shop_id', 0, type=int)
         
         logger.info(f"Fetching dashboard metrics for store: {store_id}, shop: {shop_id}")
         
-        # Build query for top selling items to get aggregate metrics
-        query = f"show me top selling items"
+        today = datetime.today().date()
+
+        # Define exact date ranges
+        end_current_period = today
+        start_current_period = end_current_period - timedelta(days=41)  # 42 days inclusive
+
+        end_prior_period = end_current_period - relativedelta(years=1)
+        start_prior_period = start_current_period - relativedelta(years=1)
+
+        current_period_str = f"from {start_current_period} to {end_current_period}"
+        prior_period_str = f"from {start_prior_period} to {end_prior_period}"
+
+        # Queries
+        base_query = "show me top selling items"
         if store_id > 0:
-            query += f" for store {store_id}"
+            base_query += f" for store {store_id}"
         if shop_id > 0:
-            query += f" in shop {shop_id}"
-        query += " for last 42 days"
-        
-        # Get data from chatbot/MCP
-        result = get_chatbot().chat(query, config.model_name)
-        
-        # Extract metrics from result
+            base_query += f" in shop {shop_id}"
+
+        current_query = f"{base_query} {current_period_str}"
+        prior_query = f"{base_query} {prior_period_str}"
+
+        # Get current year data
+        current_result = get_chatbot().chat(current_query, config.model_name)
+
+        # Get prior year data
+        prior_result = get_chatbot().chat(prior_query, config.model_name)
+
+        def extract_metrics(result):
+            revenue, units, margin_pct, profit = 0, 0, 0, 0
+
+            if result.get('success') and result.get('has_data'):
+                summary = result.get('summary_statistics', {})
+
+                if summary:
+                    for key, val in summary.items():
+                        val_clean = float(str(val).replace('$', '').replace(',', '').replace('%', ''))
+                        if 'revenue' in key.lower():
+                            revenue = val_clean
+                        elif 'units' in key.lower():
+                            units = int(val_clean)
+                        elif 'margin' in key.lower():
+                            margin_pct = val_clean
+                    profit = revenue * margin_pct / 100 if margin_pct else 0
+                else:
+                    results_data = result.get('results_data', [])
+                    for row in results_data:
+                        revenue += float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
+                        units += int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
+                        profit += float(row.get('total_margin', 0) or row.get('margin', 0) or 0)
+                    margin_pct = (profit / revenue * 100) if revenue else 0
+
+            return revenue, units, margin_pct, profit
+
+        # Extract metrics
+        current_revenue, current_units, current_margin_pct, current_profit = extract_metrics(current_result)
+        prior_revenue, prior_units, prior_margin_pct, prior_profit = extract_metrics(prior_result)
+
+        # Calculate YoY percentages
         metrics = {
-            'total_revenue': 0,
-            'margin_pct': 0,
-            'total_units': 0,
-            'total_profit': 0,
-            'total_cogs': 0
+            'total_revenue': current_revenue,
+            'total_units': current_units,
+            'margin_pct': current_margin_pct,
+            'total_profit': current_profit,
+            'revenue_yoy_pct': round(((current_revenue - prior_revenue) / prior_revenue) * 100, 1) if prior_revenue else 0,
+            'units_yoy_pct': round(((current_units - prior_units) / prior_units) * 100, 1) if prior_units else 0,
+            'margin_yoy_pct': round(current_margin_pct - prior_margin_pct, 1) if prior_margin_pct else 0
         }
+
+        logger.info(f"Final metrics calculated: {metrics}")
+
+        return jsonify({'success': True, 'metrics': metrics})
+
+    except Exception as e:
+        logger.error(f"Error in metrics endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dashboard/otb-metrics')
+def api_dashboard_otb_metrics():
+    """Get OTB (Open To Buy) metrics - API endpoint"""
+    try:
+        from datetime import datetime
+        
+        # Get store and shop IDs from query parameters
+        store_id = request.args.get('store_id', 0, type=int)
+        shop_id = request.args.get('shop_id', 0, type=int)
+        
+        # Get current month and next 2 months
+        now = datetime.now()
+        current_month = now.month
+        current_year = now.year
+        
+        # Build query for OTB metrics based on filters
+        query = f"Get OTB metrics for year {current_year}"
+        if store_id > 0:
+            query += f" store {store_id}"
+        if shop_id > 0:
+            query += f" shop {shop_id}"
+        
+        logger.info(f"Fetching OTB metrics with query: {query} (store_id={store_id}, shop_id={shop_id})")
+        
+        # For OTB metrics, let's query BigQuery directly due to MCP tool issues
+        try:
+            from google.cloud import bigquery
+            client = bigquery.Client()
+            
+            # Build the query with proper parameters
+            query_sql = f"""
+            SELECT 
+                CAST(shop_id AS STRING) AS shop_id,
+                shop_name,
+                CAST(store_id AS STRING) AS store_id,
+                store_name,
+                metric_name,
+                date_month,
+                value,
+                last_updated_timestamp
+            FROM `sis-sandbox-463113.OTB.OTB_at_a_glance`
+            WHERE 1=1
+                {f"AND shop_id = '{shop_id}'" if shop_id > 0 else ""}
+                {f"AND store_id = '{store_id}'" if store_id > 0 else ""}
+                AND EXTRACT(YEAR FROM date_month) = {current_year}
+            ORDER BY date_month DESC, shop_id, store_id, metric_name
+            """
+            
+            logger.info(f"Executing direct BigQuery: {query_sql}")
+            
+            # Execute the query
+            query_job = client.query(query_sql)
+            results = list(query_job)
+            
+            # Convert to list of dicts
+            results_data = []
+            for row in results:
+                results_data.append(dict(row))
+            
+            logger.info(f"Direct BigQuery returned {len(results_data)} rows")
+            
+            # Create a result structure similar to chatbot response
+            result = {
+                'success': True,
+                'has_data': len(results_data) > 0,
+                'results_data': results_data
+            }
+            
+        except Exception as bq_error:
+            logger.error(f"BigQuery direct query failed: {bq_error}")
+            # Fallback to MCP tool
+            bot = get_chatbot()
+            result = bot.chat(query, config.model_name, mcp_tool='get_otb_metrics')
         
         if result.get('success') and result.get('has_data'):
             try:
-                # Try to extract metrics from summary statistics first
-                summary_stats = result.get('summary_statistics', {})
+                # Try different possible data locations
+                results_data = result.get('results_data', [])
+                if not results_data and 'data' in result:
+                    results_data = result['data']
+                if not results_data and 'df' in result:
+                    # Convert DataFrame to list of dicts
+                    df = result['df']
+                    if hasattr(df, 'to_dict'):
+                        results_data = df.to_dict('records')
                 
-                if summary_stats:
-                    # Use summary statistics for accurate totals
-                    total_revenue = 0
-                    total_units = 0
-                    margin_pct = 0
-                    
-                    # Extract from summary stats
-                    for key, value in summary_stats.items():
-                        key_lower = key.lower()
-                        # Clean numeric values (remove $, commas, %)
-                        clean_value = str(value).replace('$', '').replace(',', '').replace('%', '')
-                        
-                        if 'grand_total_revenue' in key_lower or 'total_revenue' in key_lower:
-                            try:
-                                total_revenue = float(clean_value)
-                            except:
-                                pass
-                        elif 'grand_total_units' in key_lower or 'total_units' in key_lower:
-                            try:
-                                total_units = int(float(clean_value))
-                            except:
-                                pass
-                        elif 'avg_margin_pct' in key_lower or 'margin_pct' in key_lower:
-                            try:
-                                margin_pct = float(clean_value)
-                            except:
-                                pass
-                    
-                    # Calculate profit and COGS based on margin
-                    total_profit = (total_revenue * margin_pct / 100) if margin_pct > 0 else 0
-                    total_cogs = total_revenue - total_profit
-                    
-                    logger.info(f"Extracted from summary stats: revenue={total_revenue}, units={total_units}, margin={margin_pct}%")
+                logger.info(f"OTB query returned {len(results_data) if isinstance(results_data, list) else 'unknown'} rows")
+                logger.info(f"Results data type: {type(results_data)}")
+                
+                # If results_data is a DataFrame, convert to list of dicts
+                if hasattr(results_data, 'to_dict'):
+                    results_data = results_data.to_dict('records')
+                    logger.info(f"Converted DataFrame to {len(results_data)} records")
+                
+                # Log sample data for debugging
+                if results_data and isinstance(results_data, list) and len(results_data) > 0:
+                    logger.info(f"Sample OTB data: {results_data[0]}")
                 else:
-                    # Fallback to calculating from raw data
-                    results_data = result.get('results_data', [])
-                    if results_data and len(results_data) > 0:
-                        # Sum up the metrics from the data
-                        total_revenue = 0
-                        total_units = 0
-                        total_profit = 0
-                        
-                        for row in results_data:
-                            # Handle different possible column names
-                            revenue = float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
-                            units = int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
-                            margin = float(row.get('total_margin', 0) or row.get('margin', 0) or 0)
-                            
-                            total_revenue += revenue
-                            total_units += units
-                            total_profit += margin
-                        
-                        # Calculate COGS and margin
-                        total_cogs = total_revenue - total_profit
-                        margin_pct = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+                    logger.warning(f"Unexpected results_data format: {results_data}")
+                    # Try to extract data from the result
+                    logger.info(f"Full result keys: {list(result.keys())}")
+                    if 'visualization' in result:
+                        logger.info(f"Has visualization: {len(result['visualization'])} chars")
                 
-                # Set metrics regardless of which path we took
-                metrics['total_revenue'] = total_revenue
-                metrics['margin_pct'] = margin_pct
-                metrics['total_units'] = total_units
-                metrics['total_profit'] = total_profit
-                metrics['total_cogs'] = total_cogs
+                # Ensure results_data is a list
+                if not isinstance(results_data, list):
+                    logger.error(f"results_data is not a list: {type(results_data)}")
+                    results_data = []
                 
-                logger.info(f"Calculated metrics: {metrics}")
-            except Exception as calc_error:
-                logger.error(f"Error calculating metrics: {calc_error}")
-            # Check if results_data is defined
-            if 'results_data' in locals():
-                logger.error(f"Sample data: {results_data[0] if results_data else 'No data'}")
-            else:
-                logger.error("No results_data available")
-        
-        return jsonify({'success': True, 'metrics': metrics})
+                # Process and format OTB data for display
+                otb_data = {
+                    'months': [],
+                    'metrics': {},
+                    'formatted_table': []
+                }
+                
+                # Get current and next 2 months
+                months = []
+                month_names = ['January', 'February', 'March', 'April', 'May', 'June', 
+                              'July', 'August', 'September', 'October', 'November', 'December']
+                
+                for i in range(3):
+                    month_idx = (current_month - 1 + i) % 12
+                    year = current_year if (current_month + i) <= 12 else current_year + 1
+                    months.append({
+                        'name': month_names[month_idx],
+                        'date': f"{year}-{(month_idx + 1):02d}-01"
+                    })
+                
+                otb_data['months'] = [m['name'] for m in months]
+                
+                # Filter data for current + next 2 months
+                # If store_id or shop_id filters are applied, use them
+                filtered_data = []
+                for row in results_data:
+                    # Log row for debugging
+                    row_store = row.get('store_id', '')
+                    row_shop = row.get('shop_id', '')
+                    
+                    # Check if row matches filters (if any)
+                    # Note: store_id and shop_id from DB might be strings
+                    if store_id > 0:
+                        if str(row_store) != str(store_id):
+                            continue
+                    if shop_id > 0:
+                        if str(row_shop) != str(shop_id):
+                            continue
+                    
+                    # Check if date is in our target months
+                    row_date = str(row.get('date_month', ''))
+                    for month in months:
+                        if row_date.startswith(month['date'][:7]):  # Compare YYYY-MM
+                            filtered_data.append(row)
+                            break
+                
+                logger.info(f"Filtered OTB data to {len(filtered_data)} rows for months: {[m['date'][:7] for m in months]}")
+                
+                # Check if we have any data after filtering
+                if not filtered_data:
+                    logger.warning(f"No OTB data found for store {store_id}, shop {shop_id} in months {[m['date'][:7] for m in months]}")
+                    return jsonify({
+                        'success': True,
+                        'data': {
+                            'months': [m['name'] for m in months],
+                            'formatted_table': [],
+                            'message': f'No OTB data available for the selected filters in {months[0]["name"]}-{months[-1]["name"]} {current_year}'
+                        }
+                    })
+                
+                # Organize data by metric and month
+                metrics_by_name = {}
+                for row in filtered_data:
+                    metric_name = row.get('metric_name', '')
+                    month_date = str(row.get('date_month', ''))
+                    value = float(row.get('value', 0))
+                    
+                    if metric_name not in metrics_by_name:
+                        metrics_by_name[metric_name] = {}
+                    
+                    # Find which month this belongs to
+                    for month in months:
+                        if month_date.startswith(month['date'][:7]):
+                            metrics_by_name[metric_name][month['name']] = value
+                            break
+                
+                # Format data for table display
+                metric_order = ['OTB Goal', 'OTB Ordered', 'Monthly OTB Remaining', 
+                               'Yearly OTB Remaining', 'OTB Received', '% Received YTD']
+                
+                for metric in metric_order:
+                    if metric in metrics_by_name:
+                        row = {'metric': metric}
+                        for month_name in otb_data['months']:
+                            value = metrics_by_name[metric].get(month_name, 0)
+                            # Format value based on metric type
+                            if metric == '% Received YTD':
+                                row[month_name] = f"{value:.0f}%"
+                            elif value < 0:
+                                row[month_name] = f"(${abs(value):,.0f})"
+                            else:
+                                row[month_name] = f"${value:,.0f}"
+                        otb_data['formatted_table'].append(row)
+                
+                return jsonify({
+                    'success': True, 
+                    'data': otb_data,
+                    'raw_data': filtered_data
+                })
+                
+            except Exception as process_error:
+                logger.error(f"Error processing OTB data: {process_error}")
+                return jsonify({'success': False, 'error': f'Failed to process OTB data: {str(process_error)}'}), 500
+        else:
+            error_msg = result.get('error', 'No OTB data available')
+            logger.error(f"Failed to get OTB data: {error_msg}")
+            logger.error(f"Full result: {result}")
+            return jsonify({'success': False, 'error': error_msg}), 404
+            
     except Exception as e:
+        logger.error(f"Error fetching OTB metrics: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/dashboard/chart/<chart_type>')

@@ -1,0 +1,123 @@
+get_advanced_carrying_costs:
+    kind: bigquery-sql
+    source: bq-datamarts
+    description: Computes inventory holding costs and highlights expensive overstock
+    parameters:
+    - name: store_id
+      type: integer
+      description: Store ID to filter (0 for all)
+      default: 0
+    - name: carrying_pct
+      type: float
+      description: Annual carrying cost percentage (e.g., 0.25 for 25%)
+      default: 0.25
+    - name: shop_id
+      type: integer
+      description: Shop ID to filter (0 for all)
+      default: 0
+    - name: days_back
+      type: integer
+      description: Days to calculate average inventory
+      default: 90
+    - name: limit
+      type: integer
+      description: Number of items to return
+      default: 9999
+    statement: "WITH inventory_metrics AS (\n  SELECT \n    oh.sku_number,\n    oh.store_number,\n\
+      \    COALESCE(skus.as400_data.sku_description, 'Unknown') as product_name,\n\
+      \    COALESCE(skus.as400_data.style, '') as style,\n    COALESCE(skus.as400_data.vendor_name1,\
+      \ '') as vendor,\n    oh.oh_units as current_units,\n    oh.cost_extension as\
+      \ current_cost_value,\n    oh.retail_extension as current_retail_value,\n  \
+      \  COALESCE(skus.specialty_shop, 0) as shop_id,\n    COALESCE(skus.as400_data.specialty_shop_description,\
+      \ '') as shop_name\n  FROM `sis-data-marts.data_marts.mart_current_on_hand`\
+      \ oh\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON oh.sku_number\
+      \ = skus.dim_sku_id\n  WHERE oh.oh_units > 0\n    AND (@store_id = 0 OR oh.store_number\
+      \ = @store_id)\n    AND (@shop_id = 0 OR skus.specialty_shop = @shop_id OR skus.specialty_shop\
+      \ IS NULL)\n),\nsales_velocity AS (\n  SELECT \n    fs.sku_id,\n    fs.store_id,\n\
+      \    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as units_sold,\n    AVG(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as avg_daily_sales\n\
+      \  FROM `sis-data-marts.warehouse.fct_sales` fs\n  WHERE DATE(fs.transaction_datetime)\
+      \ >= DATE_SUB(CURRENT_DATE(), INTERVAL CAST(@days_back AS INT64) DAY)\n  GROUP\
+      \ BY fs.sku_id, fs.store_id\n)\nSELECT \n  im.sku_number,\n  im.product_name,\n\
+      \  im.style,\n  im.vendor,\n  im.shop_name,\n  im.current_units,\n  ROUND(im.current_cost_value,\
+      \ 2) as inventory_cost,\n  ROUND(im.current_cost_value * CAST(@carrying_pct\
+      \ AS FLOAT64) / 365 * CAST(@days_back AS FLOAT64), 2) as period_carrying_cost,\n\
+      \  ROUND(im.current_cost_value * CAST(@carrying_pct AS FLOAT64), 2) as annual_carrying_cost,\n\
+      \  COALESCE(sv.units_sold, 0) as units_sold_period,\n  CASE \n    WHEN COALESCE(sv.avg_daily_sales,\
+      \ 0) > 0 \n    THEN ROUND(im.current_units / sv.avg_daily_sales, 1)\n    ELSE\
+      \ 999 \n  END as days_of_supply,\n  ROUND((im.current_retail_value - im.current_cost_value)\
+      \ / NULLIF(im.current_retail_value, 0) * 100, 1) as margin_pct,\n  CASE\n  \
+      \  WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 180 THEN 'Excess\
+      \ Stock'\n    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 90 THEN\
+      \ 'Overstock'\n    WHEN im.current_units / NULLIF(sv.avg_daily_sales, 0) > 30\
+      \ THEN 'Normal'\n    ELSE 'Low Stock'\n  END as inventory_status,\n  CASE WHEN\
+      \ sv.units_sold > 0 THEN ROUND(im.current_cost_value / sv.units_sold * CAST(@carrying_pct\
+      \ AS FLOAT64), 2) ELSE NULL END as cost_per_unit_sold\nFROM inventory_metrics\
+      \ im\nLEFT JOIN sales_velocity sv ON im.sku_number = sv.sku_id AND im.store_number\
+      \ = sv.store_id\nWHERE im.current_cost_value > 0\nORDER BY annual_carrying_cost\
+      \ DESC\nLIMIT @limit\n"
+
+      get_advanced_vendor_metrics:
+    kind: bigquery-sql
+    source: bq-warehouse
+    description: Analyzes vendor reliability, quality, and return rates
+    parameters:
+    - name: vendor_name
+      type: string
+      description: Vendor name filter (empty for all)
+      default: ''
+    - name: store_id
+      type: integer
+      description: Store ID to filter (0 for all)
+      default: 0
+    - name: days_back
+      type: integer
+      description: Number of days to analyze
+      default: 90
+    - name: limit
+      type: integer
+      description: Number of vendors to return
+      default: 25
+    statement: "WITH vendor_sales AS (\n  SELECT \n    skus.as400_data.vendor_name1\
+      \ as vendor,\n    COUNT(DISTINCT fs.sku_id) as sku_count,\n    COUNT(DISTINCT\
+      \ fs.transaction_id) as transaction_count,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN -ABS(fs.quantity)\n      ELSE fs.quantity\n    END) as units_sold,\n\
+      \    SUM(fs.price_extended) as total_revenue,\n    SUM(CASE \n      WHEN fs.price_extended < 0 THEN fs.price_extended - (-ABS(fs.cogs_extended))\n      ELSE fs.price_extended - fs.cogs_extended\n    END)\
+      \ as gross_margin,\n    AVG(CASE \n      WHEN fs.price_extended < 0 THEN (fs.price_extended - (-ABS(fs.cogs_extended))) / NULLIF(fs.price_extended, 0)\n      ELSE (fs.price_extended - fs.cogs_extended) / NULLIF(fs.price_extended, 0)\n    END) * 100 as avg_margin_pct\n  FROM `sis-data-marts.warehouse.fct_sales` fs\n\
+      \  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
+      \  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
+      \ CAST(@days_back AS INT64) DAY)\n    AND (@store_id = 0 OR fs.store_id = @store_id)\n\
+      \    AND (@vendor_name = '' OR UPPER(skus.as400_data.vendor_name1) LIKE CONCAT('%',\
+      \ UPPER(@vendor_name), '%'))\n  GROUP BY skus.as400_data.vendor_name1\n),\n\
+      vendor_inventory AS (\n  SELECT \n    skus.as400_data.vendor_name1 as vendor,\n\
+      \    COUNT(DISTINCT oh.sku_number) as inventory_skus,\n    SUM(oh.oh_units)\
+      \ as total_units_on_hand,\n    SUM(oh.cost_extension) as total_inventory_value,\n\
+      \    AVG(oh.oh_units) as avg_units_per_sku\n  FROM `sis-data-marts.data_marts.mart_current_on_hand`\
+      \ oh\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON oh.sku_number\
+      \ = skus.dim_sku_id\n  WHERE oh.oh_units > 0\n    AND (@store_id = 0 OR oh.store_number\
+      \ = @store_id)\n  GROUP BY skus.as400_data.vendor_name1\n),\nvendor_performance\
+      \ AS (\n  SELECT \n    skus.as400_data.vendor_name1 as vendor,\n    COUNT(DISTINCT\
+      \ CASE WHEN fs.quantity < 0 THEN fs.transaction_id END) as return_transactions,\n\
+      \    SUM(CASE WHEN fs.quantity < 0 THEN ABS(fs.quantity) ELSE 0 END) as returned_units,\n\
+      \    COUNT(DISTINCT DATE(fs.transaction_datetime)) as active_days\n  FROM `sis-data-marts.warehouse.fct_sales`\
+      \ fs\n  LEFT JOIN `sis-data-marts.warehouse.dim_skus` skus ON fs.sku_id = skus.dim_sku_id\n\
+      \  WHERE DATE(fs.transaction_datetime) >= DATE_SUB(CURRENT_DATE(), INTERVAL\
+      \ CAST(@days_back AS INT64) DAY)\n    AND (@store_id = 0 OR fs.store_id = @store_id)\n\
+      \  GROUP BY skus.as400_data.vendor_name1\n)\nSELECT \n  COALESCE(vs.vendor,\
+      \ vi.vendor, vp.vendor) as vendor_name,\n  COALESCE(vs.sku_count, 0) as active_skus,\n\
+      \  COALESCE(vi.inventory_skus, 0) as stocked_skus,\n  COALESCE(vs.units_sold,\
+      \ 0) as units_sold,\n  ROUND(COALESCE(vs.total_revenue, 0), 2) as revenue,\n\
+      \  ROUND(COALESCE(vs.gross_margin, 0), 2) as gross_margin,\n  ROUND(COALESCE(vs.avg_margin_pct,\
+      \ 0), 1) as avg_margin_pct,\n  ROUND(COALESCE(vi.total_inventory_value, 0),\
+      \ 2) as inventory_investment,\n  ROUND(COALESCE(vp.returned_units, 0) / NULLIF(vs.units_sold,\
+      \ 0) * 100, 2) as return_rate_pct,\n  ROUND(COALESCE(vs.total_revenue, 0) /\
+      \ NULLIF(vi.total_inventory_value, 0), 2) as inventory_turnover,\n  ROUND(COALESCE(vs.gross_margin,\
+      \ 0) / NULLIF(vi.total_inventory_value, 0), 2) as gmroi,\n  COALESCE(vp.active_days,\
+      \ 0) as days_with_sales,\n  ROUND(COALESCE(vs.total_revenue, 0) / NULLIF(vp.active_days,\
+      \ 0), 2) as avg_daily_revenue,\n  CASE\n    WHEN COALESCE(vp.returned_units,\
+      \ 0) / NULLIF(vs.units_sold, 0) > 0.1 THEN 'High Returns'\n    WHEN COALESCE(vs.gross_margin,\
+      \ 0) / NULLIF(vs.total_revenue, 0) < 0.2 THEN 'Low Margin'\n    WHEN COALESCE(vs.total_revenue,\
+      \ 0) / NULLIF(vi.total_inventory_value, 0) < 2 THEN 'Slow Moving'\n    ELSE\
+      \ 'Good'\n  END as vendor_status\nFROM vendor_sales vs\nFULL OUTER JOIN vendor_inventory\
+      \ vi ON vs.vendor = vi.vendor\nFULL OUTER JOIN vendor_performance vp ON COALESCE(vs.vendor,\
+      \ vi.vendor) = vp.vendor\nWHERE COALESCE(vs.vendor, vi.vendor, vp.vendor) IS\
+      \ NOT NULL\n  AND COALESCE(vs.total_revenue, 0) > 0\nORDER BY revenue DESC\n\
+      LIMIT @limit\n"

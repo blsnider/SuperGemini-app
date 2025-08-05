@@ -33,7 +33,7 @@ def generate_summary(df, query, model_name, available_models, api_clients, bigqu
     
     Data Overview:
     - Total rows: {len(df)}
-    - Columns: {', '.join(df.columns)}
+    - Columns: {', '.join(str(col) for col in df.columns)}
     """
     
     # Add toolbox context if available
@@ -104,7 +104,7 @@ def _analyze_data_content(df, query: str) -> Dict[str, Any]:
     Replaces the extract_intent() functionality for summary generation.
     """
     query_lower = query.lower()
-    columns = [col.lower() for col in df.columns]
+    columns = [str(col).lower() for col in df.columns]
     
     analysis = {
         'type': 'general',
@@ -417,7 +417,7 @@ def generate_parallel_summary(df, query, models_list, api_clients, bigquery_util
     rows_to_show = min(50, len(df))
     data_summary = f"""
     Query: {query}
-    Data Overview: {len(df)} rows, Columns: {', '.join(df.columns)}
+    Data Overview: {len(df)} rows, Columns: {', '.join(str(col) for col in df.columns)}
     Data Sample ({rows_to_show} of {len(df)} total rows): {df.head(rows_to_show).to_string()}
     """
     
