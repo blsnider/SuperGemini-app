@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}Seasonality Configuration - Super Gemini{% endblock %}
+
+{% block content %}
+<style>
+    .seasonality-container {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .seasonality-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    .seasonality-header h1 {
+        margin: 0;
+        font-size: 2em;
+        font-weight: 600;
+    }
+    
+    .seasonality-header p {
+        margin: 10px 0 0 0;
+        opacity: 0.9;
+    }
+    
+    .info-box {
+        background: #e3f2fd;
+        border-left: 4px solid #2196f3;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 5px;
+    }
+    
+    .season-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .season-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .season-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }
+    
+    .season-code {
+        display: inline-block;
+        background: #f5f5f5;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-weight: bold;
+        font-family: monospace;
+        margin-bottom: 10px;
+    }
+    
+    .season-name {
+        font-size: 1.2em;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: #333;
+    }
+    
+    .season-detail {
+        margin: 8px 0;
+        color: #666;
+    }
+    
+    .season-detail strong {
+        color: #333;
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.9em;
+        font-weight: 500;
+        margin-top: 10px;
+    }
+    
+    .status-active {
+        background: #c8e6c9;
+        color: #2e7d32;
+    }
+    
+    .status-approaching {
+        background: #fff3e0;
+        color: #ef6c00;
+    }
+    
+    .status-inactive {
+        background: #f5f5f5;
+        color: #757575;
+    }
+    
+    .test-section {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .test-section h3 {
+        margin-top: 0;
+        color: #333;
+    }
+    
+    .test-input {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+    
+    .test-input input {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 14px;
+    }
+    
+    .test-input button {
+        padding: 10px 20px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    
+    .test-input button:hover {
+        background: #45a049;
+    }
+    
+    .test-result {
+        margin-top: 15px;
+        padding: 15px;
+        background: #f5f5f5;
+        border-radius: 5px;
+        display: none;
+    }
+    
+    .test-result.show {
+        display: block;
+    }
+</style>
+
+<div class="seasonality-container">
+    <div class="seasonality-header">
+        <h1>🌱 Seasonality Configuration</h1>
+        <p>Configure seasonal date ranges for overstock analysis</p>
+    </div>
+    
+    <div class="info-box">
+        <strong>ℹ️ How it works:</strong> Items with season codes are evaluated against their selling seasons. 
+        Items that are currently in-season or approaching their season (within 60 days) are automatically 
+        excluded from overstock reports to prevent false positives.
+    </div>
+    
+    <div class="season-grid">
+        <!-- Year-Round -->
+        <div class="season-card">
+            <span class="season-code">Y</span>
+            <div class="season-name">Year-Round</div>
+            <div class="season-detail"><strong>Active:</strong> All year</div>
+            <div class="season-detail"><strong>Months:</strong> Jan - Dec</div>
+            <div class="season-detail"><strong>Weight:</strong> 0.5x (reduced priority)</div>
+            <span class="status-badge status-active">Always Active</span>
+        </div>
+        
+        <!-- Spring -->
+        <div class="season-card">
+            <span class="season-code">S</span>
+            <div class="season-name">Spring</div>
+            <div class="season-detail"><strong>Active:</strong> January - March</div>
+            <div class="season-detail"><strong>Approaching:</strong> November - December</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-S">Checking...</span>
+        </div>
+        
+        <!-- Early Summer -->
+        <div class="season-card">
+            <span class="season-code">E</span>
+            <div class="season-name">Early Summer</div>
+            <div class="season-detail"><strong>Active:</strong> April - May</div>
+            <div class="season-detail"><strong>Approaching:</strong> February - March</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-E">Checking...</span>
+        </div>
+        
+        <!-- Summer -->
+        <div class="season-card">
+            <span class="season-code">U</span>
+            <div class="season-name">Summer</div>
+            <div class="season-detail"><strong>Active:</strong> June - July</div>
+            <div class="season-detail"><strong>Approaching:</strong> April - May</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-U">Checking...</span>
+        </div>
+        
+        <!-- Late Summer -->
+        <div class="season-card">
+            <span class="season-code">L</span>
+            <div class="season-name">Late Summer</div>
+            <div class="season-detail"><strong>Active:</strong> August - September</div>
+            <div class="season-detail"><strong>Approaching:</strong> June - July</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-L">Checking...</span>
+        </div>
+        
+        <!-- Fall -->
+        <div class="season-card">
+            <span class="season-code">F</span>
+            <div class="season-name">Fall</div>
+            <div class="season-detail"><strong>Active:</strong> October - November</div>
+            <div class="season-detail"><strong>Approaching:</strong> August - September</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-F">Checking...</span>
+        </div>
+        
+        <!-- Holiday -->
+        <div class="season-card">
+            <span class="season-code">H</span>
+            <div class="season-name">Holiday</div>
+            <div class="season-detail"><strong>Active:</strong> November - December</div>
+            <div class="season-detail"><strong>Approaching:</strong> September - October</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.2x (increased priority)</div>
+            <span class="status-badge" id="status-H">Checking...</span>
+        </div>
+        
+        <!-- Winter -->
+        <div class="season-card">
+            <span class="season-code">W</span>
+            <div class="season-name">Winter</div>
+            <div class="season-detail"><strong>Active:</strong> December - February</div>
+            <div class="season-detail"><strong>Approaching:</strong> October - November</div>
+            <div class="season-detail"><strong>Weight:</strong> 1.0x</div>
+            <span class="status-badge" id="status-W">Checking...</span>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test Season Code</h3>
+        <p>Enter a season code to check its current status:</p>
+        <div class="test-input">
+            <input type="text" id="testSeasonCode" placeholder="Enter season code (e.g., S, U, F, W)" maxlength="1">
+            <button onclick="testSeasonCode()">Test</button>
+        </div>
+        <div class="test-result" id="testResult"></div>
+    </div>
+</div>
+
+<script>
+    // Update season statuses based on current date
+    function updateSeasonStatuses() {
+        const today = new Date();
+        const currentMonth = today.getMonth() + 1; // JavaScript months are 0-indexed
+        
+        const seasons = {
+            'S': { months: [1, 2, 3], approaching: [11, 12] },  // Spring
+            'E': { months: [4, 5], approaching: [2, 3] },       // Early Summer
+            'U': { months: [6, 7], approaching: [4, 5] },       // Summer
+            'L': { months: [8, 9], approaching: [6, 7] },       // Late Summer
+            'F': { months: [10, 11], approaching: [8, 9] },     // Fall
+            'H': { months: [11, 12], approaching: [9, 10] },    // Holiday
+            'W': { months: [12, 1, 2], approaching: [10, 11] }  // Winter
+        };
+        
+        for (const [code, config] of Object.entries(seasons)) {
+            const statusEl = document.getElementById(`status-${code}`);
+            if (!statusEl) continue;
+            
+            if (config.months.includes(currentMonth)) {
+                statusEl.textContent = 'In Season';
+                statusEl.className = 'status-badge status-active';
+            } else if (config.approaching.includes(currentMonth)) {
+                statusEl.textContent = 'Approaching';
+                statusEl.className = 'status-badge status-approaching';
+            } else {
+                statusEl.textContent = 'Out of Season';
+                statusEl.className = 'status-badge status-inactive';
+            }
+        }
+    }
+    
+    // Test a specific season code
+    function testSeasonCode() {
+        const code = document.getElementById('testSeasonCode').value.toUpperCase();
+        const resultEl = document.getElementById('testResult');
+        
+        if (!code) {
+            resultEl.classList.remove('show');
+            return;
+        }
+        
+        const today = new Date();
+        const currentMonth = today.getMonth() + 1;
+        
+        const seasons = {
+            'Y': { name: 'Year-Round', months: [1,2,3,4,5,6,7,8,9,10,11,12], approaching: [], weight: 0.5 },
+            'S': { name: 'Spring', months: [1, 2, 3], approaching: [11, 12], weight: 1.0 },
+            'E': { name: 'Early Summer', months: [4, 5], approaching: [2, 3], weight: 1.0 },
+            'U': { name: 'Summer', months: [6, 7], approaching: [4, 5], weight: 1.0 },
+            'L': { name: 'Late Summer', months: [8, 9], approaching: [6, 7], weight: 1.0 },
+            'F': { name: 'Fall', months: [10, 11], approaching: [8, 9], weight: 1.0 },
+            'H': { name: 'Holiday', months: [11, 12], approaching: [9, 10], weight: 1.2 },
+            'W': { name: 'Winter', months: [12, 1, 2], approaching: [10, 11], weight: 1.0 }
+        };
+        
+        const season = seasons[code];
+        if (!season) {
+            resultEl.innerHTML = `<strong>Invalid season code:</strong> "${code}" is not recognized.`;
+            resultEl.style.background = '#ffebee';
+            resultEl.style.color = '#c62828';
+        } else {
+            let status = 'Out of Season';
+            let statusColor = '#f5f5f5';
+            let textColor = '#757575';
+            
+            if (season.months.includes(currentMonth)) {
+                status = 'Currently In Season';
+                statusColor = '#c8e6c9';
+                textColor = '#2e7d32';
+            } else if (season.approaching.includes(currentMonth)) {
+                status = 'Approaching Season';
+                statusColor = '#fff3e0';
+                textColor = '#ef6c00';
+            }
+            
+            resultEl.innerHTML = `
+                <strong>Season Code ${code}:</strong> ${season.name}<br>
+                <strong>Status:</strong> ${status}<br>
+                <strong>Weight Factor:</strong> ${season.weight}x<br>
+                <strong>Overstock Exclusion:</strong> ${status !== 'Out of Season' ? 'Yes - Excluded from overstock' : 'No - Included in overstock analysis'}
+            `;
+            resultEl.style.background = statusColor;
+            resultEl.style.color = textColor;
+        }
+        
+        resultEl.classList.add('show');
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', updateSeasonStatuses);
+    
+    // Update status if user enters a code and presses Enter
+    document.getElementById('testSeasonCode').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            testSeasonCode();
+        }
+    });
+</script>
+{% endblock %}

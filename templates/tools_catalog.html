@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}Tools Catalog - Super Gemini{% endblock %}
+
+{% block page_name %}tools{% endblock %}
+
+{% block extra_css %}
+<style>
+    .tools-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .tools-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+    }
+    
+    .tools-header h1 {
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .tools-header p {
+        margin: 10px 0 0 0;
+        opacity: 0.9;
+    }
+    
+    .tools-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .tool-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .tool-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        border-color: #667eea;
+    }
+    
+    .tool-card h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 1.2em;
+    }
+    
+    .tool-card .tool-category {
+        display: inline-block;
+        padding: 4px 8px;
+        background: #f0f0f0;
+        border-radius: 4px;
+        font-size: 0.85em;
+        color: #666;
+        margin-bottom: 10px;
+    }
+    
+    .tool-card .tool-description {
+        color: #666;
+        line-height: 1.5;
+        margin-bottom: 15px;
+    }
+    
+    .tool-card .tool-example {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+        color: #333;
+        margin-top: 10px;
+    }
+    
+    .category-filter {
+        text-align: center;
+        margin: 20px 0;
+    }
+    
+    .category-filter button {
+        margin: 5px;
+        padding: 8px 16px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .category-filter button:hover {
+        background: #f0f0f0;
+    }
+    
+    .category-filter button.active {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+    }
+    
+    .loading-indicator {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+    }
+    
+    .error-message {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        color: #856404;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tools-container">
+    <div class="tools-header">
+        <h1>🔧 MCP Tools Catalog</h1>
+        <p>Explore and understand the available tools for retail analytics</p>
+    </div>
+    
+    <div class="category-filter">
+        <button class="filter-btn active" onclick="filterTools('all')">All Tools</button>
+        <button class="filter-btn" onclick="filterTools('sales')">Sales Analytics</button>
+        <button class="filter-btn" onclick="filterTools('inventory')">Inventory Management</button>
+        <button class="filter-btn" onclick="filterTools('performance')">Performance Metrics</button>
+        <button class="filter-btn" onclick="filterTools('advanced')">Advanced Analytics</button>
+    </div>
+    
+    <div id="toolsGrid" class="tools-grid">
+        <div class="loading-indicator">
+            <p>Loading tools catalog...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+// Tool definitions with categories and descriptions
+const toolsData = {
+    sales: [
+        {
+            name: 'get_top_selling_items',
+            title: 'Top Selling Items',
+            description: 'Analyze best-performing products by sales revenue and units sold',
+            example: 'Show me the top 10 selling items in Q4'
+        },
+        {
+            name: 'get_sales_trends',
+            title: 'Sales Trends Analysis',
+            description: 'Track sales patterns and trends over time periods',
+            example: 'What are the sales trends for the last 6 months?'
+        },
+        {
+            name: 'get_time_period_comparison',
+            title: 'Period Comparison',
+            description: 'Compare sales performance across different time periods',
+            example: 'Compare this month\'s sales to last month'
+        }
+    ],
+    inventory: [
+        {
+            name: 'get_inventory_status',
+            title: 'Inventory Status',
+            description: 'Real-time inventory levels and stock positions',
+            example: 'What\'s our current inventory status?'
+        },
+        {
+            name: 'get_overstock_items',
+            title: 'Overstock Analysis',
+            description: 'Identify items with excess inventory',
+            example: 'Show me overstocked items in store 123'
+        },
+        {
+            name: 'get_1Y_out_of_stock_items',
+            title: 'Out of Stock Analysis',
+            description: 'Track items that have been out of stock',
+            example: 'Which items have been out of stock this year?'
+        }
+    ],
+    performance: [
+        {
+            name: 'get_shop_performance',
+            title: 'Shop Performance',
+            description: 'Analyze store-level performance metrics',
+            example: 'How is store 456 performing?'
+        },
+        {
+            name: 'get_sell_through_rates',
+            title: 'Sell-Through Rates',
+            description: 'Calculate product sell-through percentages',
+            example: 'What are the sell-through rates for winter items?'
+        },
+        {
+            name: 'get_top_margin_items',
+            title: 'High Margin Products',
+            description: 'Identify products with the best profit margins',
+            example: 'Show me the top 20 highest margin items'
+        }
+    ],
+    advanced: [
+        {
+            name: 'get_advanced_inventory_turnover',
+            title: 'Inventory Turnover',
+            description: 'Advanced inventory turnover metrics and analysis',
+            example: 'Calculate inventory turnover for category X'
+        },
+        {
+            name: 'get_advanced_gmroi_performance',
+            title: 'GMROI Analysis',
+            description: 'Gross Margin Return on Investment calculations',
+            example: 'What\'s the GMROI for our apparel department?'
+        },
+        {
+            name: 'get_advanced_vendor_metrics',
+            title: 'Vendor Performance',
+            description: 'Comprehensive vendor performance analytics',
+            example: 'Show vendor performance metrics for Q3'
+        },
+        {
+            name: 'get_otb_metrics',
+            title: 'Open-to-Buy Metrics',
+            description: 'Open-to-buy planning and budget analysis',
+            example: 'What\'s our OTB budget for next month?'
+        }
+    ]
+};
+
+let currentFilter = 'all';
+
+function initializeTools() {
+    loadTools();
+}
+
+function loadTools() {
+    const grid = document.getElementById('toolsGrid');
+    grid.innerHTML = '';
+    
+    const categories = currentFilter === 'all' ? Object.keys(toolsData) : [currentFilter];
+    
+    categories.forEach(category => {
+        if (toolsData[category]) {
+            toolsData[category].forEach(tool => {
+                const card = createToolCard(tool, category);
+                grid.appendChild(card);
+            });
+        }
+    });
+    
+    if (grid.children.length === 0) {
+        grid.innerHTML = '<div class="error-message">No tools found for this category</div>';
+    }
+}
+
+function createToolCard(tool, category) {
+    const card = document.createElement('div');
+    card.className = 'tool-card';
+    card.onclick = () => useToolExample(tool.example);
+    
+    const categoryColors = {
+        sales: '#28a745',
+        inventory: '#17a2b8',
+        performance: '#ffc107',
+        advanced: '#6f42c1'
+    };
+    
+    card.innerHTML = `
+        <div class="tool-category" style="background: ${categoryColors[category]}20; color: ${categoryColors[category]}">
+            ${category.charAt(0).toUpperCase() + category.slice(1)}
+        </div>
+        <h3>${tool.title}</h3>
+        <div class="tool-description">${tool.description}</div>
+        <div class="tool-example">
+            <strong>Example:</strong> "${tool.example}"
+        </div>
+    `;
+    
+    return card;
+}
+
+function filterTools(category) {
+    currentFilter = category;
+    
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    loadTools();
+}
+
+function useToolExample(example) {
+    // Navigate to chat with the example query
+    window.location.href = `/chat?q=${encodeURIComponent(example)}`;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', initializeTools);
+</script>
+{% endblock %}
