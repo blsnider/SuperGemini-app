@@ -147,8 +147,6 @@ def get_available_models():
             "provider": "google",
             "description": "Most powerful, best for complex analysis",
             "context_window": 1048576,
-            "cost_per_1k_input": 0.00125,
-            "cost_per_1k_output": 0.005,
             "capabilities": ["text", "code", "analysis", "reasoning"],
             "recommended_for": ["complex_queries", "detailed_analysis", "inventory_analysis"]
         },
@@ -156,8 +154,6 @@ def get_available_models():
             "provider": "google", 
             "description": "Faster, good for most queries",
             "context_window": 1048576,
-            "cost_per_1k_input": 0.00075,
-            "cost_per_1k_output": 0.003,
             "capabilities": ["text", "code", "fast_response"],
             "recommended_for": ["quick_queries", "standard_analysis", "real_time"]
         },
@@ -165,8 +161,6 @@ def get_available_models():
             "provider": "google",
             "description": "Experimental, very fast",
             "context_window": 32768,
-            "cost_per_1k_input": 0.0005,
-            "cost_per_1k_output": 0.002,
             "capabilities": ["text", "experimental", "speed"],
             "recommended_for": ["testing", "rapid_prototyping", "simple_queries"]
         },
@@ -174,8 +168,6 @@ def get_available_models():
             "provider": "xai",
             "description": "Latest Grok 4 - Advanced reasoning (256K context)",
             "context_window": 262144,
-            "cost_per_1k_input": 0.002,
-            "cost_per_1k_output": 0.01,
             "capabilities": ["text", "reasoning", "real_time_data"],
             "recommended_for": ["complex_reasoning", "current_events", "creative_analysis"]
         },
@@ -183,8 +175,6 @@ def get_available_models():
             "provider": "xai",
             "description": "Grok 3 - Balanced performance (131K context)",
             "context_window": 131072,
-            "cost_per_1k_input": 0.0015,
-            "cost_per_1k_output": 0.008,
             "capabilities": ["text", "reasoning", "balanced"],
             "recommended_for": ["general_queries", "balanced_performance", "cost_effective"]
         },
@@ -192,8 +182,6 @@ def get_available_models():
             "provider": "xai",
             "description": "Grok 3 Mini - Cost-effective ($0.30/$0.50)",
             "context_window": 32768,
-            "cost_per_1k_input": 0.001,
-            "cost_per_1k_output": 0.005,
             "capabilities": ["text", "fast", "budget"],
             "recommended_for": ["simple_queries", "budget_conscious", "high_volume"]
         },
@@ -201,8 +189,6 @@ def get_available_models():
             "provider": "anthropic",
             "description": "Fast and capable for most tasks",
             "context_window": 200000,
-            "cost_per_1k_input": 0.003,
-            "cost_per_1k_output": 0.015,
             "capabilities": ["text", "code", "analysis", "fast"],
             "recommended_for": ["standard_analysis", "code_review", "data_processing"]
         },
@@ -210,8 +196,6 @@ def get_available_models():
             "provider": "anthropic",
             "description": "Most powerful Claude model",
             "context_window": 200000,
-            "cost_per_1k_input": 0.015,
-            "cost_per_1k_output": 0.075,
             "capabilities": ["text", "code", "advanced_reasoning", "creative"],
             "recommended_for": ["complex_analysis", "creative_tasks", "detailed_reasoning"]
         },
@@ -219,8 +203,6 @@ def get_available_models():
             "provider": "anthropic",
             "description": "Claude 3.5 Sonnet - efficient affordable Sonnet",
             "context_window": 200000,
-            "cost_per_1k_input": 0.003,
-            "cost_per_1k_output": 0.015,
             "capabilities": ["text", "code", "efficient"],
             "recommended_for": ["general_use", "cost_effective", "reliable"]
         },
@@ -228,8 +210,6 @@ def get_available_models():
             "provider": "anthropic",
             "description": "Fastest Anthropic Model",
             "context_window": 200000,
-            "cost_per_1k_input": 0.0008,
-            "cost_per_1k_output": 0.004,
             "capabilities": ["text", "speed", "lightweight"],
             "recommended_for": ["quick_responses", "high_throughput", "simple_tasks"]
         },
@@ -237,8 +217,6 @@ def get_available_models():
             "provider": "openai",
             "description": "Flagship GPT model for complex tasks",
             "context_window": 128000,
-            "cost_per_1k_input": 0.005,
-            "cost_per_1k_output": 0.015,
             "capabilities": ["text", "code", "multimodal", "reasoning"],
             "recommended_for": ["complex_tasks", "multimodal_analysis", "premium_quality"]
         },
@@ -246,17 +224,13 @@ def get_available_models():
             "provider": "openai",
             "description": "Faster, more affordable GPT-4 model",
             "context_window": 128000,
-            "cost_per_1k_input": 0.00015,
-            "cost_per_1k_output": 0.0006,
             "capabilities": ["text", "code", "fast", "budget"],
             "recommended_for": ["quick_queries", "cost_effective", "high_volume"]
         },
-        "o1-preview": {
+        "gpt-5-2025-08-07": {
             "provider": "openai",
             "description": "Advanced reasoning model (preview)",
-            "context_window": 32768,
-            "cost_per_1k_input": 0.015,
-            "cost_per_1k_output": 0.06,
+            "context_window": 400000,
             "capabilities": ["reasoning", "complex_logic", "preview"],
             "recommended_for": ["complex_reasoning", "mathematical_analysis", "research"]
         }
@@ -328,32 +302,7 @@ def get_model_recommendations(query_type: str = None, budget: str = 'medium') ->
     else:  # default recommendations
         return ['gemini-2.5-pro', 'claude-sonnet-4-20250514', 'gpt-4o', 'grok-3']
 
-def estimate_query_cost(model_id: str, input_text: str, estimated_output_tokens: int = 500) -> float:
-    """
-    Estimate the cost of a query for a specific model.
-    
-    Args:
-        model_id: The model identifier
-        input_text: The input text to analyze
-        estimated_output_tokens: Estimated number of output tokens
-    
-    Returns:
-        Estimated cost in USD
-    """
-    models = get_available_models()
-    
-    if model_id not in models:
-        return 0.0
-    
-    model_config = models[model_id]
-    
-    # Rough token estimation (characters / 4)
-    input_tokens = len(input_text) // 4
-    
-    input_cost = (input_tokens / 1000) * model_config['cost_per_1k_input']
-    output_cost = (estimated_output_tokens / 1000) * model_config['cost_per_1k_output']
-    
-    return input_cost + output_cost
+# Cost estimation function removed
 
 def validate_model_selection(model_id: str) -> tuple[bool, str]:
     """
@@ -385,7 +334,7 @@ class AppConfig:
     max_history_items: int = int(os.getenv('MAX_HISTORY_ITEMS', '50'))
     max_suggestions: int = int(os.getenv('MAX_SUGGESTIONS', '8'))
     enable_dashboard: bool = os.getenv('ENABLE_DASHBOARD', 'True').lower() == 'true'
-    enable_cost_tracking: bool = os.getenv('ENABLE_COST_TRACKING', 'True').lower() == 'true'
+    # Cost tracking removed
     
     # API Keys validation
     @property
@@ -425,12 +374,7 @@ if __name__ == "__main__":
         provider_models = [m for m in models.values() if m['provider'] == provider]
         print(f"{provider.title()}: {len(provider_models)} models")
     
-    print("\n=== Cost Estimation Test ===")
-    test_query = "Show me top 10 selling products by revenue in the last 30 days"
-    for model_id in ['gemini-2.5-pro', 'gpt-4o-mini', 'claude-3.5-haiku-20241022']:
-        if model_id in models:
-            cost = estimate_query_cost(model_id, test_query)
-            print(f"{model_id}: ${cost:.4f}")
+    # Cost estimation test removed
     
     print("\n=== Recommendation Test ===")
     for query_type in ['simple', 'complex', 'reasoning']:
@@ -442,7 +386,7 @@ if __name__ == "__main__":
     print(f"Default model: {app_config.default_model}")
     print(f"Available providers: {app_config.available_providers}")
     print(f"Dashboard enabled: {app_config.enable_dashboard}")
-    print(f"Cost tracking enabled: {app_config.enable_cost_tracking}")
+    # Cost tracking removed
 
     print("\n=== Store Mappings Test ===")
     store_mappings = get_store_mappings()

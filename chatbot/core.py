@@ -23,79 +23,18 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# MCP Toolbox Integration - Single import attempt
+# MCP Toolbox Integration - Use our custom wrapper
 try:
-    # Try the actual import path first
-    from toolbox_core import ToolboxSyncClient
+    from .toolbox_wrapper import create_toolbox_client
     TOOLBOX_AVAILABLE = True
-    logger.info("✅ ToolboxSyncClient imported successfully from toolbox_core")
-except ImportError:
-    try:
-        # Fallback to alternative import path
-        from mcp_toolbox import ToolboxSyncClient
-        TOOLBOX_AVAILABLE = True
-        logger.info("✅ ToolboxSyncClient imported successfully from mcp_toolbox")
-    except ImportError as e:
-        logger.warning(f"⚠️ ToolboxSyncClient not available: {e}")
-        TOOLBOX_AVAILABLE = False
-        
-        # Create a dummy base class when MCP Toolbox isn't available
-        class ToolboxSyncClient:
-            def __init__(self, base_url: str):
-                self.base_url = base_url
-                logger.warning("Using dummy ToolboxSyncClient - MCP Toolbox not available")
-            
-            async def _request(self, method: str, path: str, **kwargs):
-                raise NotImplementedError("MCP Toolbox not available")
+    logger.info("✅ Custom toolbox wrapper imported successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Toolbox wrapper not available: {e}")
+    TOOLBOX_AVAILABLE = False
 
 # Import asyncio for proper session management
 import asyncio
 import aiohttp
-
-# Working Toolbox Client - No authentication needed
-class AuthenticatedToolboxClient(ToolboxSyncClient):
-    """Extended ToolboxSyncClient - no auth needed since Cloud Run allows unauthenticated access"""
-    
-    def __init__(self, base_url: str):
-        self.toolbox_available = TOOLBOX_AVAILABLE
-        self._session = None
-        
-        if not TOOLBOX_AVAILABLE:
-            logger.error("Cannot initialize AuthenticatedToolboxClient - ToolboxSyncClient not available")
-            super().__init__(base_url)  # Initialize dummy base class
-            return
-        
-        try:
-            super().__init__(base_url)
-            
-            # No authentication needed since we configured Cloud Run to allow unauthenticated access
-            self.use_auth = False
-            logger.info("✅ Using unauthenticated access (Cloud Run configured for allUsers)")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize ToolboxSyncClient: {e}")
-            self.toolbox_available = False
-    
-    async def _request(self, method: str, path: str, **kwargs):
-        """Simple request without authentication"""
-        if not self.toolbox_available:
-            raise RuntimeError("MCP Toolbox not available - cannot make requests")
-            
-        logger.debug(f"Making unauthenticated request: {method} {path}")
-        try:
-            return await super()._request(method, path, **kwargs)
-        except Exception as e:
-            logger.error(f"Request failed: {method} {path} - Error: {e}")
-            raise
-    
-    def __del__(self):
-        """Cleanup any open sessions"""
-        if hasattr(self, '_session') and self._session:
-            try:
-                asyncio.create_task(self._session.close())
-            except RuntimeError:
-                # If no event loop is running, we can't close it async
-                pass
 
 class SuperGeminiRetailChatbot:
     def __init__(self, config):
@@ -116,7 +55,11 @@ class SuperGeminiRetailChatbot:
         self.last_results = None  # Raw results data as list of dicts
         self.last_data = None     # Alias for last_results for chart generation
         
-        # Cost tracking
+        # Performance optimization: Add caching
+        self._query_cache = {}  # Cache for MCP tool results
+        self._cache_ttl = 300  # 5 minutes TTL for cache
+        
+        # Cost tracking for LLM queries only (not data costs)
         self.total_cost = 0.0
         self.query_costs = {}
         
@@ -145,57 +88,30 @@ class SuperGeminiRetailChatbot:
                 logger.error(f"Error cleaning up toolbox: {e}")
 
     def _initialize_toolbox(self):
-        """Initialize MCP Toolbox client with authentication if on Cloud Run"""
+        """Initialize MCP Toolbox client using our custom wrapper"""
         if not TOOLBOX_AVAILABLE:
-            logger.warning("Cannot initialize toolbox - library not available")
+            logger.warning("Cannot initialize toolbox - wrapper not available")
             return
             
         try:
             # Your deployed Toolbox URL
-            toolbox_url = os.getenv("TOOLBOX_URL", "https://toolbox-41815171183.us-central1.run.app")
+            toolbox_url = os.getenv("TOOLBOX_URL", "https://toolbox-zchpgeskka-uc.a.run.app")
             logger.info(f"Connecting to MCP Toolbox at: {toolbox_url}")
             
-            # Use our authenticated client
-            self.toolbox = AuthenticatedToolboxClient(toolbox_url)
+            # Use our custom toolbox client wrapper
+            self.toolbox = create_toolbox_client(toolbox_url, prefer_direct=True)
             logger.info("MCP Toolbox client initialized successfully")
-            
-            # Test the connection first
-            if os.getenv('K_SERVICE'):
-                logger.info("Running on Cloud Run - testing authenticated connection...")
-            else:
-                logger.info("Running locally - testing unauthenticated connection...")
             
             # Load the retail_analytics toolset defined in tools.yaml
             logger.info("Loading 'retail_analytics' toolset...")
-            tools_result = self.toolbox.load_toolset('retail_analytics')
+            self.tools = self.toolbox.load_toolset('retail_analytics')
             
-            # Handle different return formats from toolbox
-            if isinstance(tools_result, dict):
-                self.tools = tools_result
+            # The wrapper always returns a dictionary
+            if isinstance(self.tools, dict):
                 logger.info(f"Loaded tools as dictionary: {list(self.tools.keys())}")
-            elif isinstance(tools_result, list):
-                logger.info(f"Converting tools list to dictionary. Found {len(tools_result)} tools")
-                self.tools = {}
-                
-                # Simple conversion - assume tools have a callable interface
-                for tool in tools_result:
-                    if hasattr(tool, '__name__'):
-                        self.tools[tool.__name__] = tool
-                    elif hasattr(tool, 'name'):
-                        self.tools[tool.name] = tool
-                    else:
-                        # Try to extract name from string representation
-                        tool_str = str(tool)
-                        if 'get_' in tool_str:
-                            import re
-                            match = re.search(r'(get_\w+)', tool_str)
-                            if match:
-                                self.tools[match.group(1)] = tool
-                
-                logger.info(f"Converted tools to dictionary: {list(self.tools.keys())}")
             else:
-                logger.error(f"Unexpected tools format: {type(tools_result)}")
-                raise RuntimeError(f"Invalid tools format from MCP Toolbox: {type(tools_result)}")
+                logger.error(f"Unexpected tools format from wrapper: {type(self.tools)}")
+                raise RuntimeError(f"Invalid tools format from MCP Toolbox wrapper: {type(self.tools)}")
             
             # Only enable if we have tools
             if self.tools:
@@ -415,6 +331,29 @@ class SuperGeminiRetailChatbot:
         
         return filtered
 
+    def _get_smart_limit(self, tool_name: str, query: str) -> int:
+        """Get an intelligent limit based on tool type and query context"""
+        query_lower = query.lower()
+        
+        # If user is asking for summary or overview, use smaller limit
+        if any(word in query_lower for word in ['summary', 'overview', 'quick', 'brief']):
+            return 100
+        
+        # For inventory/overstock analysis, use medium limit for performance
+        if 'overstock' in tool_name or 'inventory' in tool_name:
+            return 500  # Balance between comprehensive data and performance
+        
+        # For top/best queries without specific number, use reasonable default
+        if 'top' in tool_name or 'best' in tool_name:
+            return 100
+        
+        # For variance and advanced analysis, use higher limit
+        if 'variance' in tool_name or 'advanced' in tool_name:
+            return 1000
+        
+        # Default for comprehensive analysis
+        return 9999
+    
     def _extract_parameters_from_query(self, query: str, tool_name: str, snapshot_date: str = None) -> Dict[str, Any]:
         """Extract parameters from user query - only include explicitly mentioned parameters"""
         query_lower = query.lower()
@@ -534,8 +473,11 @@ class SuperGeminiRetailChatbot:
                 params['risk_level'] = 'medium'
             elif 'low' in query_lower and 'risk' in query_lower:
                 params['risk_level'] = 'low'
+            # Set smart default limit for inventory analysis
             if limit is not None:
                 params['limit'] = limit
+            else:
+                params['limit'] = self._get_smart_limit(tool_name, query_lower)
             # Add snapshot_date for inventory tools
             if snapshot_date:
                 params['snapshot_date'] = snapshot_date
@@ -558,8 +500,13 @@ class SuperGeminiRetailChatbot:
                 params['store_id'] = store_id
             if shop_id is not None:
                 params['shop_id'] = shop_id
+            # Set a smart default limit for overstock items
+            # Only override if user didn't specify a limit
             if limit is not None:
                 params['limit'] = limit
+            else:
+                # Use smart limit based on context
+                params['limit'] = self._get_smart_limit(tool_name, query_lower)
             # Let MCP use its own default for days_supply_threshold
             # Add snapshot_date for inventory tools
             if snapshot_date:
@@ -778,8 +725,11 @@ class SuperGeminiRetailChatbot:
                 params['store_id'] = store_id
             if shop_id is not None:
                 params['shop_id'] = shop_id
+            # Set smart default limit for out-of-stock analysis
             if limit is not None:
                 params['limit'] = limit
+            else:
+                params['limit'] = self._get_smart_limit(tool_name, query_lower)
             return params
         
         # Handle advanced tools with specific parameter requirements
@@ -854,8 +804,12 @@ class SuperGeminiRetailChatbot:
                 params['shop_id'] = shop_id
             if days_back is not None:
                 params['days_back'] = days_back
+            # Set smart default limit for advanced analysis
             if limit is not None:
                 params['limit'] = limit
+            else:
+                # Use smart limit based on context
+                params['limit'] = self._get_smart_limit(tool_name, query_lower)
             # Snapshot date will be filtered by _filter_parameters_for_tool if not accepted
             if snapshot_date:
                 params['snapshot_date'] = snapshot_date
@@ -867,8 +821,16 @@ class SuperGeminiRetailChatbot:
             params['store_id'] = store_id
         if shop_id is not None:
             params['shop_id'] = shop_id
-        if limit is not None:
-            params['limit'] = limit
+        
+        # Check if this tool accepts a limit parameter
+        tool_params = self._get_tool_parameters(tool_name)
+        if 'limit' in tool_params:
+            if limit is not None:
+                params['limit'] = limit
+            else:
+                # Use smart limit based on context
+                params['limit'] = self._get_smart_limit(tool_name, query_lower)
+        
         return params
 
     def chat(self, user_query, model_name=None, user_id=None, session_id=None, mcp_tool=None, snapshot_date=None):
@@ -936,58 +898,97 @@ class SuperGeminiRetailChatbot:
             parameters = self._filter_parameters_for_tool(parameters, tool_name)
             logger.info(f"Filtered parameters for {tool_name}: {json.dumps(parameters, indent=2)}")
             
-            # Call the tool with extracted parameters with retry logic
-            max_retries = 3
-            retry_delay = 1  # seconds
-            result = None
+            # Check cache first for performance
+            cache_key = f"{tool_name}:{json.dumps(parameters, sort_keys=True)}"
+            cached_result = None
             
-            for attempt in range(max_retries):
-                try:
-                    result = tool(**parameters)
-                    break  # Success! Exit the retry loop
-                except Exception as tool_error:
-                    error_msg = str(tool_error)
-                    
-                    # Check for 503 Service Unavailable errors
-                    if '503' in error_msg and 'text/plain' in error_msg:
-                        logger.warning(f"MCP Toolbox server unavailable (503) - attempt {attempt + 1}/{max_retries}: {error_msg}")
-                        
-                        if attempt < max_retries - 1:
-                            # Wait before retrying
-                            logger.info(f"Retrying in {retry_delay} seconds...")
-                            time.sleep(retry_delay)
-                            retry_delay *= 2  # Exponential backoff
-                            continue
+            if hasattr(self, '_query_cache') and cache_key in self._query_cache:
+                cached_data = self._query_cache[cache_key]
+                if time.time() - cached_data['timestamp'] < self._cache_ttl:
+                    logger.info(f"🚀 Cache hit for {tool_name} - using cached result (saved {int(time.time() - cached_data['timestamp'])}s ago)")
+                    cached_result = cached_data['result']
+                    result = cached_result
+                else:
+                    # Cache expired, remove it
+                    logger.info(f"Cache expired for {tool_name} - fetching fresh data")
+                    del self._query_cache[cache_key]
+            
+            # If not in cache, call the tool with retry logic
+            if cached_result is None:
+                max_retries = 3
+                retry_delay = 1  # seconds
+                result = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        # Call the tool - should work properly now with fixed server response format
+                        if callable(tool):
+                            start_time = time.time()
+                            result = tool(**parameters)
+                            elapsed = time.time() - start_time
+                            logger.info(f"⏱️ MCP tool {tool_name} took {elapsed:.2f} seconds (limit={parameters.get('limit', 'default')})")
                         else:
-                            # Final attempt failed
-                            logger.error(f"MCP Toolbox server unavailable after {max_retries} attempts")
+                            logger.error(f"Tool {tool_name} is not callable")
+                            raise ValueError(f"Tool {tool_name} is not callable")
+                        
+                        # Cache successful result
+                        self._query_cache[cache_key] = {
+                            'result': result,
+                            'timestamp': time.time()
+                        }
+                        
+                        # Limit cache size to prevent memory issues
+                        if len(self._query_cache) > 100:
+                            # Remove oldest entry
+                            oldest_key = min(self._query_cache.keys(), 
+                                           key=lambda k: self._query_cache[k]['timestamp'])
+                            del self._query_cache[oldest_key]
+                            logger.info(f"Cache size limit reached, removed oldest entry")
+                        
+                        break  # Success! Exit the retry loop
+                    except Exception as tool_error:
+                        error_msg = str(tool_error)
+                        
+                        # Check for 503 Service Unavailable errors
+                        if '503' in error_msg and 'text/plain' in error_msg:
+                            logger.warning(f"MCP Toolbox server unavailable (503) - attempt {attempt + 1}/{max_retries}: {error_msg}")
+                            
+                            if attempt < max_retries - 1:
+                                # Wait before retrying
+                                logger.info(f"Retrying in {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                                retry_delay *= 2  # Exponential backoff
+                                continue
+                            else:
+                                # Final attempt failed
+                                logger.error(f"MCP Toolbox server unavailable after {max_retries} attempts")
+                                return {
+                                    'success': False,
+                                    'error': 'MCP Toolbox server is temporarily unavailable. Please try again later.',
+                                    'technical_error': error_msg,
+                                    'tool_name': tool_name,
+                                    'parameters': parameters,
+                                    'query_id': query_id,
+                                    'suggestion': 'The MCP Toolbox server appears to be down. Please contact support if this persists.'
+                                }
+                        
+                        # Check for JSON decode errors
+                        elif 'JSON' in error_msg and 'decode' in error_msg:
+                            logger.error(f"MCP Toolbox response format error: {error_msg}")
+                            # Don't retry JSON errors - they're likely not transient
                             return {
                                 'success': False,
-                                'error': 'MCP Toolbox server is temporarily unavailable. Please try again later.',
+                                'error': 'Received unexpected response format from MCP Toolbox.',
                                 'technical_error': error_msg,
                                 'tool_name': tool_name,
                                 'parameters': parameters,
                                 'query_id': query_id,
-                                'suggestion': 'The MCP Toolbox server appears to be down. Please contact support if this persists.'
+                                'suggestion': 'The server returned an invalid response. Please contact support.'
                             }
-                    
-                    # Check for JSON decode errors
-                    elif 'JSON' in error_msg and 'decode' in error_msg:
-                        logger.error(f"MCP Toolbox response format error: {error_msg}")
-                        # Don't retry JSON errors - they're likely not transient
-                        return {
-                            'success': False,
-                            'error': 'Received unexpected response format from MCP Toolbox.',
-                            'technical_error': error_msg,
-                            'tool_name': tool_name,
-                            'parameters': parameters,
-                            'query_id': query_id,
-                            'suggestion': 'The server returned an invalid response. Please contact support.'
-                        }
-                    
-                    # For other errors, don't retry
-                    else:
-                        raise
+                        
+                        # For other errors, don't retry
+                        else:
+                            raise
             
             # Check if we got a result
             if result is None:
@@ -1180,7 +1181,11 @@ class SuperGeminiRetailChatbot:
             logger.info(f"Processing result from tool {tool_name}: type={type(result)}")
             
             # First convert to DataFrame using existing logic
+            start_time = time.time()
             df = self._convert_raw_result_to_dataframe(result, tool_name)
+            elapsed = time.time() - start_time
+            if df is not None and not df.empty:
+                logger.info(f"⏱️ DataFrame conversion took {elapsed:.2f} seconds for {len(df)} rows")
             
             if df is None or df.empty:
                 return df
@@ -1194,13 +1199,17 @@ class SuperGeminiRetailChatbot:
             return None
 
     def _convert_raw_result_to_dataframe(self, result: Any, tool_name: str) -> Optional[pd.DataFrame]:
-        """Convert raw MCP result to DataFrame (existing logic)"""
+        """Convert raw MCP result to DataFrame with enhanced error handling"""
+        logger.info(f"Processing {tool_name} result: type={type(result)}")
+        
         # Handle string results (JSON format)
         if isinstance(result, str):
             try:
-                # Debug logging for OTB tool
-                if tool_name == 'get_otb_metrics':
-                    logger.info(f"OTB raw string result (first 500 chars): {result[:500]}")
+                # Debug logging for troubleshooting
+                if len(result) > 1000:
+                    logger.info(f"Large JSON string result (first 500 chars): {result[:500]}")
+                else:
+                    logger.info(f"JSON string result: {result}")
                 
                 # Parse JSON string
                 data = json.loads(result)
@@ -1240,7 +1249,7 @@ class SuperGeminiRetailChatbot:
                     return df
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON string result: {e}")
-                logger.error(f"Raw result type: {type(result)}, content: {str(result)[:200]}")
+                logger.error(f"Raw result type: {type(result)}, content: {str(result)[:500]}")
                 return None
         
         elif isinstance(result, pd.DataFrame):

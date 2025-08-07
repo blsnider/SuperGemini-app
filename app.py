@@ -9,6 +9,7 @@ import traceback
 import sys
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import time
 
 
 # Load environment variables
@@ -141,6 +142,25 @@ class AppConfig:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
+# Add cache busting for development
+@app.context_processor
+def inject_cache_buster():
+    """Inject a cache buster into all templates to force reload of static files."""
+    # Always use current timestamp for CloudWorkstations development
+    # This ensures you ALWAYS get the latest files
+    cache_buster = str(int(time.time()))
+    return {'cache_buster': cache_buster}
+
+# Add no-cache headers in development
+@app.after_request
+def add_no_cache_headers(response):
+    """Add headers to prevent caching in development."""
+    if os.getenv('ENVIRONMENT', 'production') != 'production':
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # Initialize config and services using your existing pattern
 config = AppConfig()
 logger.info(f"Configuration: {config}")
@@ -206,6 +226,90 @@ def get_history():
         logger.error(f"Error getting history: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/seasonality')
+def seasonality_config():
+    """View and manage seasonality configuration for overstock analysis."""
+    return render_template('seasonality_config.html')
+
+@app.route('/tools')
+def tools_catalog():
+    """Display the tools catalog page."""
+    return render_template('tools_catalog.html')
+
+@app.route('/force-refresh')
+def force_refresh():
+    """Force a complete refresh by redirecting with a unique parameter."""
+    import random
+    unique_id = random.randint(100000, 999999)
+    return f"""
+    <html>
+    <head>
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
+    </head>
+    <body>
+        <h2>Forcing complete refresh...</h2>
+        <p>Clearing all caches and redirecting...</p>
+        <script>
+            // Clear various caches
+            if ('caches' in window) {{
+                caches.keys().then(names => {{
+                    names.forEach(name => caches.delete(name));
+                }});
+            }}
+            
+            // Force reload with unique parameter
+            setTimeout(() => {{
+                window.location.href = '/?refresh={unique_id}&t=' + Date.now();
+            }}, 1000);
+        </script>
+    </body>
+    </html>
+    """
+
+@app.route('/debug/template')
+def debug_template():
+    """Debug endpoint to check template content."""
+    import hashlib
+    with open('templates/base.html', 'r') as f:
+        content = f.read()
+    
+    # Check if seasonality button exists
+    has_seasonality = 'Seasonality Config' in content
+    button_count = content.count('nav-button')
+    
+    # Get hash of file for verification
+    file_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+    
+    return jsonify({
+        'template_hash': file_hash,
+        'has_seasonality_button': has_seasonality,
+        'nav_button_count': button_count,
+        'cache_buster_active': True,
+        'timestamp': int(time.time()),
+        'environment': os.getenv('ENVIRONMENT', 'production'),
+        'file_modified': datetime.fromtimestamp(os.path.getmtime('templates/base.html')).isoformat()
+    })
+
+@app.route('/debug/raw-sidebar')
+def debug_raw_sidebar():
+    """Show the exact sidebar HTML being served."""
+    with open('templates/base.html', 'r') as f:
+        content = f.read()
+    
+    # Extract just the sidebar section
+    import re
+    sidebar_match = re.search(r'<div class="sidebar".*?</div>\s*</div>', content, re.DOTALL)
+    
+    if sidebar_match:
+        sidebar_html = sidebar_match.group(0)
+        # Return as plain text so browser doesn't interpret HTML
+        from flask import Response
+        return Response(sidebar_html, mimetype='text/plain')
+    else:
+        return "Could not find sidebar in template", 404
+
 @app.route('/suggest')
 def get_suggestions():
     """Get query suggestions based on partial input"""
@@ -253,25 +357,7 @@ def clear_history():
         logger.error(f"Error clearing history: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/cost_summary')
-def get_cost_summary():
-    """Get current session cost summary"""
-    try:
-        bot = get_chatbot()
-        # Get cost info from session or calculate
-        cost_summary = {
-            'total_session_cost': session.get('total_cost', 0.0),
-            'queries_executed': session.get('query_count', 0),
-            'average_cost_per_query': 0.0
-        }
-        
-        if cost_summary['queries_executed'] > 0:
-            cost_summary['average_cost_per_query'] = cost_summary['total_session_cost'] / cost_summary['queries_executed']
-            
-        return jsonify({'success': True, 'cost_summary': cost_summary})
-    except Exception as e:
-        logger.error(f"Error getting cost summary: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+# Cost summary endpoint removed
 
 @app.route('/export', methods=['POST'])
 def export_data():
@@ -681,15 +767,18 @@ def api_dashboard_metrics():
 
         # Get current year data
         current_result = get_chatbot().chat(current_query, config.model_name)
+        logger.info(f"Raw current_result: {json.dumps(current_result, indent=2)}")  # Log full raw result
 
         # Get prior year data
         prior_result = get_chatbot().chat(prior_query, config.model_name)
+        logger.info(f"Raw prior_result: {json.dumps(prior_result, indent=2)}")  # Log full raw result
 
         def extract_metrics(result):
             revenue, units, margin_pct, profit = 0, 0, 0, 0
 
             if result.get('success') and result.get('has_data'):
                 summary = result.get('summary_statistics', {})
+                logger.info(f"Summary statistics: {summary}")  # Log if summary is used
 
                 if summary:
                     for key, val in summary.items():
@@ -703,12 +792,13 @@ def api_dashboard_metrics():
                     profit = revenue * margin_pct / 100 if margin_pct else 0
                 else:
                     results_data = result.get('results_data', [])
+                    logger.info(f"Results data (first 5 rows for brevity): {results_data[:5]}")  # Log sample of per-row data
                     for row in results_data:
                         revenue += float(row.get('total_revenue', 0) or row.get('revenue', 0) or 0)
                         units += int(row.get('total_units', 0) or row.get('units_sold', 0) or row.get('units', 0) or 0)
                         profit += float(row.get('total_margin', 0) or row.get('margin', 0) or 0)
                     margin_pct = (profit / revenue * 100) if revenue else 0
-
+                logger.info(f"Extracted: revenue={revenue}, units={units}, margin_pct={margin_pct}, profit={profit}")  # Log final extracted values
             return revenue, units, margin_pct, profit
 
         # Extract metrics
