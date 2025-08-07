@@ -248,6 +248,8 @@ body {
 .table-wrapper {
     position: relative;
     width: 100%;
+    max-width: 100%;
+    overflow: visible !important; /* Don't restrict overflow */
     margin-bottom: 20px;
 }
 
@@ -288,16 +290,17 @@ body {
 }
 
 .table-container {
-    max-width: 100%;
     width: 100%;
-    max-height: 400px !important;  /* Fixed height for vertical scrolling */
-    overflow: auto !important;     /* Enable both scrollbars */
+    overflow-x: auto !important;    /* Force horizontal scrollbar */
+    overflow-y: visible !important;  /* No vertical constraint for now */
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     display: block !important;
     position: relative;
     background: white;
+    padding-bottom: 10px; /* Space for scrollbar */
 }
 
 /* Ensure inner content doesn't interfere with scrolling */
@@ -307,11 +310,11 @@ body {
 
 .sortable-table {
     width: auto !important;  /* Allow table to size naturally */
-    min-width: 100%;     /* Ensure minimum width of container */
+    min-width: max-content !important;  /* Force table to be wide enough for all content */
     border-collapse: separate;
     border-spacing: 0;
     display: table !important;
-    table-layout: auto !important;
+    table-layout: auto !important;  /* Dynamic column sizing */
     margin: 0 !important;
 }
 
@@ -401,6 +404,27 @@ body {
     scrollbar-color: #667eea #f1f5f9;
 }
 
+/* Force horizontal scroll on parent containers */
+.chat-container,
+.main-content,
+.page-wrapper {
+    overflow: visible !important;
+}
+
+/* Nuclear option - Force scrollbar visibility */
+.table-container.force-scroll {
+    overflow-x: scroll !important; /* Always show horizontal scrollbar */
+}
+
+/* Ensure no parent elements hide overflow */
+.chat-view-container,
+.controls,
+.input-container,
+.action-buttons {
+    overflow: visible !important;
+    max-width: 100%;
+}
+
 /* Scrollbar visibility indicator */
 .table-container.has-scroll {
     box-shadow: 
@@ -443,10 +467,14 @@ body {
 /* Chat-specific table overrides */
 .chat-box .table-wrapper {
     margin: 15px 0;
+    overflow: visible !important;
+    max-width: 100%;
 }
 
 .chat-box .table-container {
-    max-height: 500px !important; /* Slightly taller in chat context */
+    /* Height restriction removed to ensure horizontal scrolling works */
+    max-width: 100%;
+    overflow-x: auto !important;
 }
 
 /* Ensure results-table div doesn't interfere */
@@ -465,7 +493,7 @@ body {
 /* Responsive Table */
 @media (max-width: 768px) {
     .table-container {
-        max-height: 300px !important;  /* Smaller height on mobile */
+        overflow-x: scroll !important;  /* Force scrollbar on mobile */
         max-width: calc(100vw - 40px);  /* Account for padding/margins */
     }
     

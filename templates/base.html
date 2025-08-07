@@ -9,7 +9,7 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     
     <!-- Core CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css?v=1754421210') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ cache_buster }}">
     {% block extra_css %}{% endblock %}
     
     <!-- External Libraries -->
@@ -31,18 +31,25 @@
     </div>
     
     <!-- Version Badge -->
-    <div class="version-badge" title="Version 2.7.0 - Hidden cost/snapshot UI, fixed OTB metrics param">v2.7.0</div>
+    <div class="version-badge" title="Version 2.9.1 - Restored cost tracking for LLM queries">v2.9.1</div>
     
     <div class="main-container">
         <!-- Collapsible Sidebar -->
         <div class="sidebar" id="sidebar">
-            <h3>🚀 Navigation</h3>
+            <h3>🚀 Navigation v2</h3>
+            <!-- Force update: {{ cache_buster }} -->
             <div class="navigation-buttons">
                 <button class="nav-button" data-nav="chat" onclick="showChatView()">
                     <i>💬</i> Chat Assistant
                 </button>
                 <button class="nav-button" data-nav="dashboard" onclick="showDashboard()">
                     <i>📊</i> Analytics Dashboard
+                </button>
+                <button class="nav-button" data-nav="seasonality" onclick="window.location.href='/seasonality'">
+                    <i>🌱</i> Seasonality Config
+                </button>
+                <button class="nav-button" data-nav="tools" onclick="window.location.href='/tools'">
+                    <i>🔧</i> Tools Catalog
                 </button>
             </div>
             
@@ -66,16 +73,7 @@
                 </div>
             </div>
             
-            <h3>📖 Query History</h3>
-            <div class="history-panel" id="historyPanel">
-                <div style="text-align: center; color: #666; font-size: 0.9em;">
-                    No queries yet
-                </div>
-            </div>
-            
-            <button class="nav-button" onclick="clearHistory()" style="margin-top: 10px; font-size: 0.85em;">
-                <i>🗑️</i> Clear History
-            </button>
+            <!-- Query History Removed -->
             
             <h3 style="margin-top: 20px;">⚙️ Configuration</h3>
             <button class="nav-button" onclick="showModelConfig()" style="font-size: 0.9em;">
@@ -90,8 +88,8 @@
     </div>
     
     <!-- Core JavaScript -->
-    <script src="{{ url_for('static', filename='js/navigation.js?v=1754421210') }}"></script>
-    <script src="{{ url_for('static', filename='js/core.js?v=1754421210') }}"></script>
+    <script src="{{ url_for('static', filename='js/navigation.js') }}?v={{ cache_buster }}"></script>
+    <script src="{{ url_for('static', filename='js/core.js') }}?v={{ cache_buster }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

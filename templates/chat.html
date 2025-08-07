@@ -214,7 +214,7 @@ button:disabled {
 .chat-container {
     flex: 1;
     overflow-y: auto;
-    overflow-x: hidden; /* Prevent horizontal scroll on container */
+    overflow-x: visible !important; /* Allow horizontal overflow for tables */
     padding: 20px;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
@@ -270,16 +270,39 @@ button:disabled {
     position: relative;
 }
 
-/* Remove constraints on tables inside chat-box */
+/* Ensure tables inside chat-box can scroll properly */
 .chat-box .table-container {
     width: 100%;
-    max-width: none !important;
     overflow-x: auto !important;
-    overflow-y: visible;
+    overflow-y: visible !important;
     position: relative;
-    margin: 0 -20px; /* Negative margin to extend beyond chat-box padding */
-    padding: 0 20px; /* Add padding back */
     display: block !important;
+    -webkit-overflow-scrolling: touch;
+    margin: 10px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    padding-bottom: 10px;
+}
+
+/* Force scrollbar to always show on desktop */
+.chat-box .table-container::-webkit-scrollbar {
+    height: 12px !important;
+    display: block !important;
+}
+
+.chat-box .table-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 6px;
+}
+
+.chat-box .table-container::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 6px;
+}
+
+.chat-box .table-container::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
 }
 
 .results-table { 
@@ -296,9 +319,9 @@ button:disabled {
 
 .table-container {
     width: 100%;
-    max-width: none !important;
+    max-width: 100% !important;
     overflow-x: auto !important;
-    overflow-y: visible;
+    overflow-y: visible !important;
     -webkit-overflow-scrolling: touch;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
@@ -306,7 +329,7 @@ button:disabled {
     position: relative;
     border: 2px solid #e2e8f0;
     background: #f8fafc;
-    padding-bottom: 15px; /* Increased to ensure scrollbar is visible */
+    padding-bottom: 15px; /* Space for scrollbar */
     display: block !important;
 }
 
@@ -341,7 +364,7 @@ button:disabled {
 
 .sortable-table {
     width: auto !important;
-    min-width: 100%;
+    min-width: max-content !important; /* Ensure table expands for all content */
     border-collapse: separate;
     border-spacing: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -388,10 +411,11 @@ button:disabled {
 }
 
 .sortable-table td {
-    padding: 10px 8px;
+    padding: 10px 12px;
     border-bottom: 1px solid #e2e8f0;
     font-size: 13px;
     white-space: nowrap;
+    min-width: 80px; /* Minimum cell width */
 }
 
 .sortable-table tr:hover {
@@ -518,67 +542,61 @@ button:disabled {
     padding: 20px;
 }
 
-.query-history-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+/* Query history styles removed */
+/* CRITICAL: Fix for horizontal scrolling in chat tables */
+#chatHistory {
+    width: 100%;
+    overflow-x: visible;
 }
 
-.query-history-item {
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid #e0e0e0;
+.message {
+    width: 100%;
+    overflow: visible;
 }
 
-.query-history-item:hover {
-    background: #e9ecef;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.message.assistant .chat-box {
+    width: 100%;
+    max-width: none !important;
 }
 
-.query-history-time {
-    font-size: 0.8em;
-    color: #6c757d;
-    margin-bottom: 5px;
+/* Ensure table containers can scroll horizontally */
+.chat-box .results-table {
+    overflow: visible !important;
+    width: 100%;
 }
 
-.query-history-text {
-    color: #212529;
-    font-weight: 500;
-    margin-bottom: 5px;
+.chat-box .table-wrapper {
+    width: 100%;
+    overflow: visible;
 }
 
-.query-history-meta {
-    font-size: 0.85em;
-    color: #6c757d;
-    display: flex;
-    justify-content: space-between;
+.chat-box .table-container {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    max-height: none !important;
+    width: 100%;
+    display: block;
+    position: relative;
 }
 
-.history-toggle-btn {
-    position: fixed;
-    right: 20px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    width: 50px;
-    height: 50px;
-    border-radius: 25px;
-    font-size: 24px;
-    cursor: pointer;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    transition: all 0.3s ease;
-    z-index: 999;
+/* Make scrollbar always visible for wide tables */
+.chat-box .table-container.force-scroll {
+    overflow-x: scroll !important;
 }
 
-.history-toggle-btn:hover {
-    transform: translateY(-50%) scale(1.1);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+/* Ensure tables can expand to their natural width */
+.chat-box .sortable-table {
+    width: auto !important;
+    min-width: 100%;
+    table-layout: auto !important;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .chat-box .table-container {
+        overflow-x: scroll !important;
+        -webkit-overflow-scrolling: touch;
+    }
 }
 </style>
 {% endblock %}
@@ -612,7 +630,7 @@ button:disabled {
     
     <div id="loading" class="loading">
         <div class="spinner"></div>
-        <p>Analyzing your question with <span id="loadingModel"></span>...</p>
+        <p>Processing query through MCP BigQuery tools...</p>
     </div>
     
     <div class="chat-container">
@@ -620,23 +638,7 @@ button:disabled {
     </div>
 </div>
 
-<!-- Query History Side Tray -->
-<div class="side-tray" id="queryHistoryTray">
-    <div class="side-tray-header">
-        <h3>📚 Query History</h3>
-        <button class="close-tray" onclick="closeQueryHistory()">&times;</button>
-    </div>
-    <div class="side-tray-content">
-        <div id="queryHistoryList" class="query-history-list">
-            <!-- Query history items will be populated here -->
-        </div>
-    </div>
-</div>
-
-<!-- Toggle Button for Query History -->
-<button class="history-toggle-btn" onclick="toggleQueryHistory()" title="View Query History">
-    📜
-</button>
+<!-- Query History Removed -->
 
 <!-- Export Dialog -->
 <div class="export-dialog" id="exportDialog">

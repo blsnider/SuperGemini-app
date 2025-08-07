@@ -241,9 +241,7 @@ class ChatManager {
             content += `<small style="color: #666; margin-left: 10px;">Total time: ${data.execution_times.total_ms}ms</small>`;
         }
         
-        if (data.estimated_cost !== undefined) {
-            content += `<small style="color: #666; margin-left: 10px;">Cost: ${data.estimated_cost.toFixed(4)}</small>`;
-        }
+        // Cost display removed
         
         content += '<br/>';
         
@@ -654,13 +652,40 @@ class ChatManager {
         const container = document.getElementById('container-' + tableId);
         if (!container) return;
         
-        const hasHorizontalScroll = container.scrollWidth > container.clientWidth;
+        const table = container.querySelector('table');
+        if (!table) return;
+        
+        // Force the container to recognize table's actual width
+        container.style.width = '100%';
+        container.style.overflowX = 'auto';
+        
+        // Debug logging
+        console.log(`Table ${tableId} dimensions:`, {
+            containerWidth: container.clientWidth,
+            tableWidth: table.scrollWidth,
+            offsetWidth: table.offsetWidth,
+            needsScroll: table.scrollWidth > container.clientWidth
+        });
+        
+        // Force scrollbar if table is wider than container
+        if (table.scrollWidth > container.clientWidth) {
+            container.style.overflowX = 'scroll';
+            container.classList.add('has-scroll', 'force-scroll');
+        }
+        
+        const hasHorizontalScroll = table.scrollWidth > container.clientWidth;
         const hasVerticalScroll = container.scrollHeight > container.clientHeight;
         
         if (hasHorizontalScroll || hasVerticalScroll) {
             container.classList.add('has-scroll');
+            
+            // Force horizontal scrollbar if table is wider
+            if (table.scrollWidth > container.clientWidth) {
+                container.classList.add('force-scroll');
+            }
         } else {
             container.classList.remove('has-scroll');
+            container.classList.remove('force-scroll');
         }
     }
 }
@@ -693,87 +718,4 @@ function exportData(format) {
     closeExportDialog();
 }
 
-// Query History Functions
-let queryHistoryOpen = false;
-
-function toggleQueryHistory() {
-    queryHistoryOpen = !queryHistoryOpen;
-    const tray = document.getElementById('queryHistoryTray');
-    
-    if (queryHistoryOpen) {
-        tray.classList.add('open');
-        loadQueryHistory();
-    } else {
-        tray.classList.remove('open');
-    }
-}
-
-function closeQueryHistory() {
-    queryHistoryOpen = false;
-    document.getElementById('queryHistoryTray').classList.remove('open');
-}
-
-async function loadQueryHistory() {
-    const historyList = document.getElementById('queryHistoryList');
-    historyList.innerHTML = '<div style="text-align: center; padding: 20px;">Loading...</div>';
-    
-    try {
-        const response = await fetch('/api/chat/queries?limit=50');
-        const data = await response.json();
-        
-        if (data.success && data.queries) {
-            displayQueryHistory(data.queries);
-        } else {
-            historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #6c757d;">No query history available</div>';
-        }
-    } catch (error) {
-        console.error('Failed to load query history:', error);
-        historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Failed to load history</div>';
-    }
-}
-
-function displayQueryHistory(queries) {
-    const historyList = document.getElementById('queryHistoryList');
-    
-    if (queries.length === 0) {
-        historyList.innerHTML = '<div style="text-align: center; padding: 20px; color: #6c757d;">No queries yet</div>';
-        return;
-    }
-    
-    historyList.innerHTML = queries.map(query => {
-        const time = new Date(query.timestamp).toLocaleString();
-        const status = query.success ? '✅' : '❌';
-        const rowCount = query.row_count !== null ? `${query.row_count} rows` : 'No data';
-        
-        return `
-            <div class="query-history-item" onclick="rerunQuery('${encodeURIComponent(query.user_query)}')">
-                <div class="query-history-time">${time}</div>
-                <div class="query-history-text">${query.user_query}</div>
-                <div class="query-history-meta">
-                    <span>${status} ${rowCount}</span>
-                    <span>${query.tool_name || query.model_name || 'Unknown'}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function rerunQuery(encodedQuery) {
-    const query = decodeURIComponent(encodedQuery);
-    document.getElementById('queryInput').value = query;
-    closeQueryHistory();
-    submitQuery();
-}
-
-// Auto-refresh query history when a new query is submitted
-const originalSubmitQuery = window.submitQuery;
-window.submitQuery = async function() {
-    const result = await originalSubmitQuery.apply(this, arguments);
-    
-    // Refresh query history if the tray is open
-    if (queryHistoryOpen) {
-        setTimeout(() => loadQueryHistory(), 1000);
-    }
-    
-    return result;
-}
+// Query History Functions Removed
