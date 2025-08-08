@@ -1,291 +1,148 @@
-# Feature Updates: Bug Fixes and UI Enhancements
+# URGENT FIX: Add Horizontal Scrollbar to Data Table
 
-## Priority: High
-**Date**: Current
-**Status**: Multiple issues need addressing
+## Problem
+The data table is cutting off columns on the right side (Priority column and beyond) with no way to scroll horizontally to see them. The table needs a horizontal scrollbar to access all columns.
 
----
+## Current Broken State
+- Table width exceeds container width
+- No horizontal scrollbar appears
+- Columns are cut off and inaccessible
+- Pagination controls are partially hidden
 
-## 1. Remove Session Cost Analysis
-### Current State
-- Session cost analysis is displayed in the UI
-- Cost calculations are shown to users
+## Required Solution
 
-### Required Changes
-1. **Remove all cost-related UI components**
-   - Hide/remove cost display widgets
-   - Remove cost calculation functions from frontend
-   - Keep backend logic intact (for potential future use)
-   
-2. **Files to modify**:
-   - Frontend components displaying cost
-   - Any cost-related state management
-   - Dashboard/chat pages showing cost metrics
+### Step 1: Identify the Table Container
+Look for the component that renders this table. It likely has a structure like:
+```jsx
+<div className="table-container">
+  <table>
+    <!-- table content -->
+  </table>
+</div>
+```
 
-### Acceptance Criteria
-- [ ] No cost information visible in UI
-- [ ] No console errors from removed components
-- [ ] Backend cost logic remains functional but disconnected from UI
+### Step 2: Apply These EXACT CSS Changes
 
----
+**Option A - Add to the table container's CSS file:**
+```css
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch; /* For smooth scrolling on iOS */
+}
 
-## 2. Hide Inventory Snapshot Date UI
-### Current State
-- Date picker/selector for inventory snapshot is visible
-- Users can currently select dates
+.table-container table {
+  min-width: max-content;
+  width: 100%;
+  table-layout: auto; /* Important: DO NOT use 'fixed' */
+}
 
-### Required Changes
-1. **Hide UI elements** (do not remove code):
-   ```css
-   /* Add display: none or visibility: hidden to date picker components */
-   .inventory-snapshot-date-picker {
-     display: none;
-   }
-   ```
+/* Ensure the container has a max-width */
+.table-wrapper {
+  max-width: 100%;
+  overflow: hidden;
+}
+```
 
-2. **Maintain backend functionality**:
-   - Keep date logic in place
-   - Use system-determined date or default value
-   - Preserve data flow, just hide UI
+**Option B - If using inline styles or styled-components:**
+```jsx
+<div style={{
+  width: '100%',
+  overflowX: 'auto',
+  overflowY: 'visible',
+  WebkitOverflowScrolling: 'touch'
+}}>
+  <table style={{
+    minWidth: 'max-content',
+    width: '100%',
+    tableLayout: 'auto'
+  }}>
+    {/* table content */}
+  </table>
+</div>
+```
 
-### Acceptance Criteria
-- [ ] Date selection UI not visible to users
-- [ ] System continues to function with default/automatic dates
-- [ ] Easy to re-enable in future (just remove hiding CSS/prop)
+**Option C - If using Tailwind CSS:**
+```jsx
+<div className="w-full overflow-x-auto overflow-y-visible">
+  <table className="w-full min-w-max table-auto">
+    {/* table content */}
+  </table>
+</div>
+```
 
----
+### Step 3: Fix the Pagination Controls
+The pagination controls also need to be within a scrollable container or positioned differently:
 
-## 3. Fix Query History Endpoint - BigQuery Access Issue
-### Current State
-- Query history endpoint not displaying executed queries in sidecar UI
-- Suspected BigQuery data access permission issue
+```css
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+```
 
-### Diagnostic Steps
-1. **Verify BigQuery permissions**:
-   - Check service account has `bigquery.jobs.list` permission
-   - Verify project ID is correct
-   - Ensure dataset/table access is granted
+### Step 4: Common Mistakes to AVOID
+1. **DO NOT use `overflow: hidden`** on any parent containers
+2. **DO NOT use `table-layout: fixed`** - this prevents proper column sizing
+3. **DO NOT set a fixed width** on the table
+4. **DO NOT use `white-space: nowrap`** on all cells - only on specific cells if needed
 
-2. **Debug the endpoint**:
-   ```javascript
-   // Add logging to query history endpoint
-   console.log('Fetching query history...');
-   console.log('Project ID:', projectId);
-   console.log('Dataset:', datasetId);
-   // Log any BigQuery errors in detail
-   ```
+### Step 5: Debug Checklist
+If the scrollbar still doesn't appear, check:
 
-3. **Common fixes**:
-   - Ensure correct scope: `https://www.googleapis.com/auth/bigquery.readonly`
-   - Check if queries are being written to expected location
-   - Verify timestamp filtering isn't excluding recent queries
+```javascript
+// Add this debug code temporarily
+const tableContainer = document.querySelector('.table-container');
+console.log('Container width:', tableContainer.offsetWidth);
+console.log('Table width:', tableContainer.querySelector('table').offsetWidth);
+console.log('Overflow-x:', window.getComputedStyle(tableContainer).overflowX);
+console.log('Parent overflow:', window.getComputedStyle(tableContainer.parentElement).overflow);
+```
 
-### Files to check:
-- Query history API endpoint
-- BigQuery client configuration
-- Sidecar UI component fetching history
+### Step 6: Nuclear Option - Force Scrollbar
+If nothing else works, add this CSS to force the scrollbar:
 
-### Acceptance Criteria
-- [ ] Query history displays in sidecar
-- [ ] Recent queries appear immediately
-- [ ] No permission errors in logs
+```css
+.table-container {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: scroll !important; /* Force scrollbar always visible */
+  overflow-y: visible !important;
+}
 
----
+/* Remove overflow hidden from ALL parent elements */
+.parent-container,
+.main-content,
+.page-wrapper {
+  overflow: visible !important;
+}
+```
 
-## 4. Fix Chat Page Scrollable DataFrame
-### Current State
-- Chat page DataFrame not scrollable
-- Table display issues
+## Testing Instructions
+1. The horizontal scrollbar should appear when table width exceeds container
+2. All columns should be accessible by scrolling
+3. The scrollbar should be at the bottom of the table data (not below pagination)
+4. Scrolling should be smooth
+5. The table headers should scroll with the content
 
-### Required Changes
-1. **Option A: Copy working implementation from dashboard**:
-   ```javascript
-   // Import the same table component used in dashboard
-   import { DataTable } from '../dashboard/components/DataTable';
-   
-   // Use identical configuration that works in dashboard
-   ```
+## Expected Result
+- ✅ Horizontal scrollbar visible when needed
+- ✅ Can scroll to see "Priority" column and any columns to the right
+- ✅ Pagination controls fully visible and accessible
+- ✅ No content is cut off
 
-2. **Option B: Fix current implementation**:
-   ```css
-   .dataframe-container {
-     max-height: 400px;
-     overflow-y: auto;
-     overflow-x: auto;
-   }
-   
-   .dataframe-table {
-     width: 100%;
-     table-layout: fixed;
-   }
-   ```
+## File Locations to Check
+- Look for files like: `DataTable.jsx`, `Table.tsx`, `table.css`, or similar
+- Check parent components that might have `overflow: hidden`
+- Look for any global styles affecting table containers
 
-### Recommendation
-- Use Option A (copy from dashboard) for consistency and proven functionality
-
-### Acceptance Criteria
-- [ ] DataFrame scrolls vertically for long data
-- [ ] DataFrame scrolls horizontally for wide tables
-- [ ] Headers remain visible during scroll (sticky headers)
-- [ ] Performance remains good with large datasets
-
----
-
-## 5. Fix OTB Metrics Dashboard Error
-### Current State
-- Error: "Failed to load OTB metrics - MCP tool execution failed: missing a required argument: 'metric_name'"
-- Broke after adding "get otb aware" MCP tool
-
-### Root Cause Analysis
-- New MCP tool likely changed the expected parameters
-- Metric name not being passed correctly to the tool
-
-### Required Changes
-1. **Check MCP tool calls**:
-   ```javascript
-   // Ensure metric_name is passed
-   const otbMetrics = await mcpTool.execute('get_otb_metrics', {
-     metric_name: 'required_metric_name', // This is missing
-     // other parameters
-   });
-   ```
-
-2. **Verify tool registration**:
-   - Check if "get otb aware" tool conflicts with existing tools
-   - Ensure proper parameter mapping
-
-### Acceptance Criteria
-- [ ] OTB metrics load successfully
-- [ ] No parameter errors
-- [ ] Both old and new MCP tools coexist without conflicts
-
----
-
-## 6. Fix YOY Calculations on Dashboard
-### Current State
-- YOY (Year-over-Year) calculations showing incorrect values
-- Calculation logic error
-
-### Debugging Steps
-1. **Verify calculation formula**:
-   ```javascript
-   // Correct YOY formula
-   const yoyChange = ((currentYear - previousYear) / previousYear) * 100;
-   ```
-
-2. **Check data alignment**:
-   - Ensure comparing same periods (e.g., Jan 2024 vs Jan 2023)
-   - Verify timezone handling
-   - Check for null/zero division
-
-3. **Common issues**:
-   - Date range misalignment
-   - Incorrect aggregation before calculation
-   - Missing data handling
-
-### Acceptance Criteria
-- [ ] YOY percentages calculate correctly
-- [ ] Handle edge cases (division by zero, missing data)
-- [ ] Results match manual calculations
-
----
-
-## 7. Add MCP Tool Configuration in Sidecar
-### New Feature Requirements
-1. **Configuration UI in sidecar**:
-   ```javascript
-   // Settings structure
-   {
-     "mcpTools": {
-       "enabledTools": {
-         "get_inventory_metrics": true,
-         "get_otb_metrics": true,
-         "get_otb_aware": true,
-         // ... other tools
-       }
-     }
-   }
-   ```
-
-2. **Implementation**:
-   - Add settings panel in sidecar
-   - Checkbox list of all available MCP tools
-   - Save preferences to local storage or user profile
-
-3. **Apply configuration**:
-   - Filter dropdown options on chat page
-   - Hide/show dashboard icons based on selection
-   - Maintain state across sessions
-
-### UI Components Needed:
-- Settings modal/panel in sidecar
-- Checkbox group for tool selection
-- Save/Cancel buttons
-- Real-time preview of changes
-
-### Acceptance Criteria
-- [ ] Users can enable/disable individual MCP tools
-- [ ] Chat dropdown reflects selected tools only
-- [ ] Dashboard icons show/hide based on selection
-- [ ] Settings persist between sessions
-
----
-
-## 8. MCP Tools Performance - CAUTION
-### Current State
-- MCP tools have slowed down
-- All tools working correctly with BigQuery
-- **DO NOT break existing functionality**
-
-### Performance Investigation Only
-1. **Add performance monitoring**:
-   ```javascript
-   const startTime = performance.now();
-   // ... tool execution ...
-   const endTime = performance.now();
-   console.log(`Tool ${toolName} took ${endTime - startTime}ms`);
-   ```
-
-2. **Optimization opportunities** (implement carefully):
-   - Query result caching
-   - Connection pooling for BigQuery
-   - Batch operations where possible
-   - Index optimization in BigQuery
-
-3. **DO NOT CHANGE**:
-   - Core query logic
-   - BigQuery connection setup
-   - Data transformation logic
-   - Any working authentication
-
-### Safe improvements:
-- [ ] Add caching layer (with TTL)
-- [ ] Implement request debouncing
-- [ ] Add loading states for better UX
-- [ ] Consider pagination for large results
-
----
-
-## Testing Requirements
-1. **Regression testing**:
-   - All MCP tools continue to work
-   - BigQuery connections remain stable
-   - No new errors introduced
-
-2. **Feature testing**:
-   - Hidden UI elements don't break functionality
-   - New configuration options work as expected
-   - Performance monitoring doesn't impact functionality
-
-## Implementation Order
-1. Fix critical errors first (OTB metrics, Query History)
-2. Hide UI elements (cost analysis, inventory date)
-3. Fix display issues (scrollable DataFrame, YOY calculations)
-4. Add new features (MCP tool configuration)
-5. Monitor performance (carefully, without breaking changes)
-
-## Notes
-- Keep all changes reversible where possible
-- Maintain backward compatibility
-- Document any workarounds for future reference
-- Test thoroughly in development before deploying
+## IMPORTANT NOTE FOR CLAUDE CODE
+This is a CSS issue. The solution is to add `overflow-x: auto` to the table's container div and ensure no parent elements have `overflow: hidden`. Do not modify the table data structure or React logic - only modify the CSS/styling.

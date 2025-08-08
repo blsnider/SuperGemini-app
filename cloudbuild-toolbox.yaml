@@ -1,0 +1,72 @@
+# Cloud Build configuration for MCP Toolbox Server
+# Usage: gcloud builds submit --config cloudbuild-toolbox.yaml --project=sis-sandbox-463113
+
+steps:
+  # Step 0: Debug - List files in build context
+    - name: 'ubuntu'
+        args: ['bash', '-c', 'echo "Build context files:" && ls -la && echo "Looking for required files..." && ls -la mcp_toolbox_server.py tools.yaml || echo "Files may be in subdirectories"']
+
+          # Step 1: Build the Docker image for MCP Toolbox
+            - name: 'gcr.io/cloud-builders/docker'
+                args: [
+                      'build',
+                            '-f', 'Dockerfile.toolbox',
+                                  '-t', 'us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox:latest',
+                                        '-t', 'us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox:$BUILD_ID',
+                                              '--build-arg', 'BUILD_ID=$BUILD_ID',
+                                                    '.'
+                                                        ]
+
+                                                          # Step 2: Push the image to Artifact Registry
+                                                            - name: 'gcr.io/cloud-builders/docker'
+                                                                args: [
+                                                                      'push',
+                                                                            '--all-tags',
+                                                                                  'us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox'
+                                                                                      ]
+
+                                                                                        # Step 3: Deploy to Cloud Run
+                                                                                          - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+                                                                                              entrypoint: bash
+                                                                                                  args:
+                                                                                                        - '-c'
+                                                                                                              - |
+                                                                                                                      echo "Deploying to Cloud Run..."
+                                                                                                                              gcloud run deploy toolbox \
+                                                                                                                                        --image=us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox:${BUILD_ID} \
+                                                                                                                                                  --region=us-central1 \
+                                                                                                                                                            --project=sis-sandbox-463113 \
+                                                                                                                                                                      --platform=managed \
+                                                                                                                                                                                --allow-unauthenticated \
+                                                                                                                                                                                          --port=8080 \
+                                                                                                                                                                                                    --memory=2Gi \
+                                                                                                                                                                                                              --cpu=1 \
+                                                                                                                                                                                                                        --min-instances=0 \
+                                                                                                                                                                                                                                  --max-instances=10 \
+                                                                                                                                                                                                                                            --timeout=300 \
+                                                                                                                                                                                                                                                      --set-env-vars="TOOLBOX_CONFIG_PATH=/app/tools.yaml,FORCE_RELOAD=${BUILD_ID}" \
+                                                                                                                                                                                                                                                                || echo "Deployment failed. Checking if service account is needed..."
+
+                                                                                                                                                                                                                                                                  # Step 4: Verify deployment
+                                                                                                                                                                                                                                                                    - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+                                                                                                                                                                                                                                                                        entrypoint: bash
+                                                                                                                                                                                                                                                                            args:
+                                                                                                                                                                                                                                                                                  - '-c'
+                                                                                                                                                                                                                                                                                        - |
+                                                                                                                                                                                                                                                                                                echo "Waiting for service to be ready..."
+                                                                                                                                                                                                                                                                                                        sleep 10
+                                                                                                                                                                                                                                                                                                                SERVICE_URL=$(gcloud run services describe toolbox --region=us-central1 --project=sis-sandbox-463113 --format="value(status.url)")
+                                                                                                                                                                                                                                                                                                                        echo "Service deployed at: $${SERVICE_URL}"
+                                                                                                                                                                                                                                                                                                                                echo "Testing health endpoint..."
+                                                                                                                                                                                                                                                                                                                                        curl -f "$${SERVICE_URL}/health" || echo "Health check failed - service may still be starting"
+
+                                                                                                                                                                                                                                                                                                                                        # Tag the images
+                                                                                                                                                                                                                                                                                                                                        images:
+                                                                                                                                                                                                                                                                                                                                          - 'us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox:latest'
+                                                                                                                                                                                                                                                                                                                                            - 'us-central1-docker.pkg.dev/sis-sandbox-463113/toolbox-repo/custom-toolbox:$BUILD_ID'
+
+                                                                                                                                                                                                                                                                                                                                            options:
+                                                                                                                                                                                                                                                                                                                                              logging: CLOUD_LOGGING_ONLY
+                                                                                                                                                                                                                                                                                                                                                machineType: 'E2_HIGHCPU_8'  # Use a faster machine for quicker builds
+
+                                                                                                                                                                                                                                                                                                                                                timeout: 1200s  # 20 minutes timeout

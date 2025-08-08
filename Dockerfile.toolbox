@@ -1,0 +1,59 @@
+# MCP Toolbox Server Dockerfile
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    flask \
+    flask-cors \
+    google-cloud-bigquery \
+    pyyaml
+
+# Copy application files
+# Copy the Python server
+COPY mcp_toolbox_server.py /app/mcp_toolbox_server.py
+
+# Copy the tools.yaml configuration
+# Adjust this path based on your actual file structure
+COPY tools.yaml /app/tools.yaml
+# OR if it's in a chatbot directory:
+# COPY chatbot/tools.yaml /app/tools.yaml
+
+# Verify files were copied
+RUN ls -la /app/ && \
+    echo "Checking for required files..." && \
+    test -f /app/mcp_toolbox_server.py && \
+    test -f /app/tools.yaml && \
+    echo "All required files present"
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV TOOLBOX_CONFIG_PATH=/app/tools.yaml
+
+# Create a non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Run the application
+CMD ["python", "/app/mcp_toolbox_server.py"]

@@ -1,0 +1,8 @@
+Clean up old tools.yaml backup files
+
+- Removed obsolete tools.yaml backup files from chatbot directory
+- These are no longer needed with new MCP toolbox integration
+
+🤖 Generated with Claude Code
+
+Co-Authored-By: Claude <noreply@anthropic.com>

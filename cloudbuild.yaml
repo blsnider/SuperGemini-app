@@ -1,27 +1,30 @@
 steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'build', '-t',
-      'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:latest',
-      '.'
-    ]
+# 1. Build the Docker image, using $_BUILD_TAG for the version
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build', '-t',
+    'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:$_BUILD_TAG',
+    '.'
+  ]
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args: [
-      'push',
-      'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:latest'
-    ]
+# 2. Push the newly built image, referencing the same $_BUILD_TAG
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'push',
+    'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:$_BUILD_TAG'
+  ]
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      [
-        'run', 'deploy', 'supergemini-app',
-        '--image=us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:latest',
-        '--region=us-central1',
-        '--project=sis-sandbox-463113',
-        '--platform=managed',
-        '--allow-unauthenticated',
-        '--service-account=supergemini-client@sis-sandbox-463113.iam.gserviceaccount.com',
-        '--port=8080'
-      ]
+# 3. Deploy to Cloud Run, ensuring it pulls the image with the correct $_BUILD_TAG
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    - 'run'
+    - 'deploy'
+    - 'supergemini-app'
+    - '--image=us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:$_BUILD_TAG'
+    - '--region=us-central1'
+    - '--project=sis-sandbox-463113'
+    - '--platform=managed'
+    - '--allow-unauthenticated'
+    - '--service-account=supergemini-client@sis-sandbox-463113.iam.gserviceaccount.com'
+    - '--port=8080'

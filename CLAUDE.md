@@ -64,6 +64,15 @@ The Super Gemini project is a Flask-based AI-driven retail analytics tool that c
   Prompt: "Using weighting_logic.py, suggest improvements for CoverageMetrics."
   Claude Response: Analyze code, propose additions like ML forecasting.
 
+## UI/UX Design Insights
+- **Navigation Sidebar Observations**:
+  - Implemented a sidebar with key navigation buttons:
+    * Chat Assistant: Provides interactive AI-driven interface
+    * Analytics Dashboard: Displays key retail metrics and insights
+    * Seasonality Configuration: Allows users to set seasonal parameters
+  - Session cost tracking is currently hidden, suggesting potential future feature for user transparency
+  - Use of emotive icons (💬, 📊, 🌱) to make navigation more intuitive and engaging
+
 ## References
 - Anthropic Docs: [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
 - Project Integration: See `core.py` for AI calls.

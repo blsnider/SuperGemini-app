@@ -46,7 +46,7 @@ Example:
    - Extracts total revenue, units, and margin from summary statistics
 
 2. **Prior Period Query**:
-   - Fetches data from same period last year
+   - Fetches data from same 42 day period last year
    - Uses same extraction logic as current period
 
 ### Error Handling
@@ -61,5 +61,5 @@ Example:
 
 ## Code Location
 The YoY calculation logic is implemented in:
-- **Backend**: `/app.py` in the `api_dashboard_metrics()` function (lines 803-809)
+- **Backend**: `/app.py` in the `api_dashboard_metrics()` function 
 - **Frontend**: `/templates/dashboard.html` in the `updateYoYMetric()` function
