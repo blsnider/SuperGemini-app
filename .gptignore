@@ -27,6 +27,5 @@ dist/
 *.sh
 
 # Cloud/infra configs (unless explicitly needed)
-*.yaml
 *.yml
 .env

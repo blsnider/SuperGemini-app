@@ -8,6 +8,21 @@ from google.cloud.exceptions import NotFound
 
 logger = logging.getLogger(__name__)
 
+# BigQuery client singleton
+_bq_client_singleton = None
+
+def get_bq_client_singleton(project_id='scheels-data-marts'):
+    """Get or create BigQuery client singleton."""
+    global _bq_client_singleton
+    if _bq_client_singleton is None:
+        try:
+            _bq_client_singleton = bigquery.Client(project=project_id)
+            logger.info(f"✅ Initialized BigQuery client singleton for project: {project_id}")
+        except Exception as e:
+            logger.error(f"Failed to initialize BigQuery client: {e}")
+            raise
+    return _bq_client_singleton
+
 class BigQueryUtils:
     """Utilities for BigQuery operations and logging - MCP-only version"""
     
@@ -28,10 +43,10 @@ class BigQueryUtils:
     def _init_bigquery_client(self):
         """Initialize BigQuery client with proper configuration"""
         try:
-            client = bigquery.Client(project=self.project_id)
+            client = get_bq_client_singleton(self.project_id)
             # Test connection
             client.query("SELECT 1").result()
-            logger.info(f"✅ BigQuery client initialized for project: {self.project_id}")
+            logger.info(f"✅ Using BigQuery client singleton for project: {self.project_id}")
             return client
         except Exception as e:
             logger.error(f"Failed to initialize BigQuery client: {e}")

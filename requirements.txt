@@ -1,5 +1,6 @@
 # Web server & routing
 Flask==3.1.1
+Flask-Compress==1.14
 gunicorn
 
 # AI Providers

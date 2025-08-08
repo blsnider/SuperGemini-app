@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>{% block title %}Super Gemini Analytics{% endblock %}</title>
     <meta charset="UTF-8">
@@ -24,8 +24,19 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body data-page="{% block page_name %}default{% endblock %}">
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toastContainer"></div>
+    
     <!-- Sidebar Toggle Button -->
-    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle navigation sidebar" aria-expanded="false">
         📊
     </button>
     
@@ -43,21 +54,21 @@
     
     <div class="main-container">
         <!-- Collapsible Sidebar -->
-        <div class="sidebar" id="sidebar">
+        <nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
             <h3>🚀 Navigation v2</h3>
             <!-- Force update: {{ cache_buster }} -->
             <div class="navigation-buttons">
-                <button class="nav-button" data-nav="chat" onclick="showChatView()">
-                    <i>💬</i> Chat Assistant
+                <button class="nav-button" data-nav="chat" onclick="showChatView()" aria-label="Open Chat Assistant">
+                    <i aria-hidden="true">💬</i> Chat Assistant
                 </button>
-                <button class="nav-button" data-nav="dashboard" onclick="showDashboard()">
-                    <i>📊</i> Analytics Dashboard
+                <button class="nav-button" data-nav="dashboard" onclick="showDashboard()" aria-label="Open Analytics Dashboard">
+                    <i aria-hidden="true">📊</i> Analytics Dashboard
                 </button>
-                <button class="nav-button" data-nav="seasonality" onclick="window.location.href='/seasonality'">
-                    <i>🌱</i> Seasonality Config
+                <button class="nav-button" data-nav="seasonality" onclick="window.location.href='/seasonality'" aria-label="Open Seasonality Configuration">
+                    <i aria-hidden="true">🌱</i> Seasonality Config
                 </button>
-                <button class="nav-button" data-nav="tools" onclick="window.location.href='/tools'">
-                    <i>🔧</i> Tools Catalog
+                <button class="nav-button" data-nav="tools" onclick="window.location.href='/tools'" aria-label="Open Tools Catalog">
+                    <i aria-hidden="true">🔧</i> Tools Catalog
                 </button>
             </div>
             
@@ -84,15 +95,15 @@
             <!-- Query History Removed -->
             
             <h3 style="margin-top: 20px;">⚙️ Configuration</h3>
-            <button class="nav-button" onclick="showModelConfig()" style="font-size: 0.9em;">
-                <i>🤖</i> Configure Models
+            <button class="nav-button" onclick="showModelConfig()" style="font-size: 0.9em;" aria-label="Configure AI Models">
+                <i aria-hidden="true">🤖</i> Configure Models
             </button>
-        </div>
+        </nav>
         
         <!-- Main Content -->
-        <div class="main-content">
+        <main class="main-content" id="main-content" role="main" tabindex="-1">
             {% block content %}{% endblock %}
-        </div>
+        </main>
     </div>
     
     <!-- Bootstrap 5 JavaScript Bundle -->

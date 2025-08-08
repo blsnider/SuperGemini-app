@@ -1,5 +1,5 @@
 # app.py - Updated for API separation (using your existing config pattern)
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, abort
 import os
 import logging
 import json
@@ -10,6 +10,8 @@ import sys
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import time
+import html
+from functools import wraps, lru_cache
 
 
 # Load environment variables
@@ -142,6 +144,14 @@ class AppConfig:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
+# Enable gzip compression for better performance
+try:
+    from flask_compress import Compress
+    Compress(app)
+    logger.info("✅ Gzip compression enabled")
+except ImportError:
+    logger.warning("Flask-Compress not available, compression disabled")
+
 # Add cache busting for development
 @app.context_processor
 def inject_cache_buster():
@@ -192,6 +202,18 @@ def get_dashboard_manager():
 def index():
     """Main page - redirect to chat"""
     return render_template('index.html')
+
+@app.route('/deployment-test')
+def deployment_test():
+    """Test if deployment is using local files"""
+    import os
+    test_file = 'DEPLOYMENT_TEST.txt'
+    if os.path.exists(test_file):
+        with open(test_file, 'r') as f:
+            content = f.read()
+        return f"<pre>{content}</pre><hr><p>Local files ARE being deployed! Check CSS: soft red = #ff6b6b</p>", 200
+    else:
+        return "<p>DEPLOYMENT_TEST.txt not found - Cloud Build is NOT using local files!</p>", 404
 
 @app.route('/dashboard')
 def dashboard_page():
@@ -268,7 +290,118 @@ def force_refresh():
     </html>
     """
 
+# Security decorator for debug endpoints
+def require_nonprod(f):
+    """Decorator to restrict endpoints to non-production environments."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if os.getenv('ENVIRONMENT', 'production') == 'production':
+            abort(404)  # Return 404 in production to hide existence
+        return f(*args, **kwargs)
+    return decorated_function
+
+# BigQuery client singleton for performance
+_bq_client = None
+def get_bq_client():
+    """Get or create BigQuery client singleton."""
+    global _bq_client
+    if _bq_client is None:
+        try:
+            from google.cloud import bigquery
+            _bq_client = bigquery.Client(project='scheels-data-marts')
+            logger.info("✅ Initialized BigQuery client singleton")
+        except Exception as e:
+            logger.error(f"Failed to initialize BigQuery client: {e}")
+            raise
+    return _bq_client
+
+# Cache buster context processor
+@app.context_processor
+def inject_cache_buster():
+    """Inject cache buster for static assets."""
+    prod = os.getenv('ENVIRONMENT', 'production') == 'production'
+    return {'cache_buster': os.getenv('APP_VERSION', '3.0.0') if prod else str(int(time.time()))}
+
+# Standardized API response helper
+def api_response(success=True, data=None, error=None, message=None, code=200, meta=None):
+    """Create standardized API response."""
+    response = {
+        'success': success,
+        'code': code
+    }
+    
+    if message:
+        response['message'] = message
+    
+    if data is not None:
+        response['data'] = data
+    
+    if error:
+        response['error'] = error
+        response['success'] = False
+    
+    if meta:
+        response['meta'] = meta
+    
+    return jsonify(response), code
+
+# Simple time-based cache decorator
+def timed_cache(seconds=300):
+    """Cache function results for specified seconds."""
+    def decorator(func):
+        cache = {}
+        cache_time = {}
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            key = str(args) + str(kwargs)
+            now = time.time()
+            
+            # Check if cached and not expired
+            if key in cache and key in cache_time:
+                if now - cache_time[key] < seconds:
+                    logger.debug(f"Cache hit for {func.__name__}")
+                    return cache[key]
+            
+            # Call function and cache result
+            result = func(*args, **kwargs)
+            cache[key] = result
+            cache_time[key] = now
+            logger.debug(f"Cache miss for {func.__name__}, caching for {seconds}s")
+            return result
+        
+        return wrapper
+    return decorator
+
+# Pagination helper
+def paginate_data(data, page=1, per_page=100):
+    """Helper function to paginate data."""
+    if not data:
+        return {
+            'items': [],
+            'total': 0,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': 0
+        }
+    
+    total = len(data)
+    total_pages = (total + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    end = start + per_page
+    
+    return {
+        'items': data[start:end],
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'total_pages': total_pages,
+        'has_next': page < total_pages,
+        'has_prev': page > 1
+    }
+
 @app.route('/debug/template')
+@require_nonprod
 def debug_template():
     """Debug endpoint to check template content."""
     import hashlib
@@ -293,6 +426,7 @@ def debug_template():
     })
 
 @app.route('/debug/raw-sidebar')
+@require_nonprod
 def debug_raw_sidebar():
     """Show the exact sidebar HTML being served."""
     with open('templates/base.html', 'r') as f:
@@ -438,6 +572,7 @@ def generate_summary():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/debug/mcp_status')
+@require_nonprod
 def debug_mcp_status():
     """Debug endpoint to check MCP toolbox status"""
     try:
@@ -464,13 +599,15 @@ def debug_mcp_status():
 # Chat API endpoints
 @app.route('/api/chat/message', methods=['POST'])
 def api_chat_message():
-    """Process chat message - API endpoint"""
+    """Process chat message - API endpoint with pagination support"""
     try:
         data = request.get_json()
         query = data.get('query')
         model = data.get('model')
         mcp_tool = data.get('mcp_tool')  # Get explicit MCP tool selection
         snapshot_date = data.get('snapshot_date')  # Get snapshot date for inventory tools
+        page = data.get('page', 1)  # Pagination support
+        per_page = data.get('per_page', 100)  # Default 100 rows per page
         
         # Debug logging
         logger.info(f"📥 Received request data: {json.dumps(data, indent=2)}")
@@ -480,6 +617,20 @@ def api_chat_message():
             return jsonify({'success': False, 'error': 'Query is required'}), 400
             
         response = get_chatbot().chat(query, model, mcp_tool=mcp_tool, snapshot_date=snapshot_date)
+        
+        # Apply pagination if data is present and is a list
+        if response.get('success') and 'data' in response and isinstance(response['data'], list):
+            paginated = paginate_data(response['data'], page, per_page)
+            response['data'] = paginated['items']
+            response['pagination'] = {
+                'page': paginated['page'],
+                'per_page': paginated['per_page'],
+                'total': paginated['total'],
+                'total_pages': paginated['total_pages'],
+                'has_next': paginated['has_next'],
+                'has_prev': paginated['has_prev']
+            }
+        
         return jsonify(response)
         
     except Exception as e:
@@ -487,8 +638,9 @@ def api_chat_message():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/chat/models')
+@timed_cache(seconds=600)  # Cache for 10 minutes
 def api_get_models():
-    """Get available models - API endpoint"""
+    """Get available models - API endpoint with caching"""
     try:
         models = get_available_models()
         return jsonify({'success': True, 'models': models})
@@ -497,8 +649,9 @@ def api_get_models():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/mcp/tools')
+@timed_cache(seconds=600)  # Cache for 10 minutes
 def api_get_mcp_tools():
-    """Get available MCP tools - API endpoint"""
+    """Get available MCP tools - API endpoint with caching"""
     try:
         bot = get_chatbot()
         if not bot or not bot.toolbox_enabled:
@@ -850,8 +1003,7 @@ def api_dashboard_otb_metrics():
         
         # For OTB metrics, let's query BigQuery directly due to MCP tool issues
         try:
-            from google.cloud import bigquery
-            client = bigquery.Client()
+            client = get_bq_client()
             
             # Build the query with proper parameters
             query_sql = f"""

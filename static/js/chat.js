@@ -7,6 +7,26 @@ class ChatManager {
         this.init();
     }
     
+    // Safe DOM manipulation utilities
+    safeSetText(element, text) {
+        if (element) {
+            element.textContent = text;
+        }
+    }
+    
+    safeSetHTML(element, html) {
+        // Only use for trusted content that needs formatting
+        if (element) {
+            // Create a temporary div to parse and sanitize
+            const temp = document.createElement('div');
+            temp.textContent = html;
+            // Allow only specific safe tags
+            const sanitized = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
+                                 .replace(/<iframe[^>]*>.*?<\/iframe>/gi, '');
+            element.innerHTML = sanitized;
+        }
+    }
+    
     async init() {
         try {
             await this.loadModels();
