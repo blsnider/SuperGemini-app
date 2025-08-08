@@ -1,5 +1,5 @@
 steps:
-  # Build the Docker image
+  # Build the Docker image with a unique tag
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'build', '--no-cache', '-t',
@@ -9,21 +9,21 @@ steps:
       '.'
     ]
 
-  # Push with SHA tag
+  # Push the image with SHA tag
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'push',
       'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-app/super-gemini-app:${SHORT_SHA}'
     ]
 
-  # Push with latest tag
+  # Push the image with latest tag
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'push',
       'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-app/super-gemini-app:latest'
     ]
 
-  # Deploy to Cloud Run
+  # Deploy to Cloud Run with new service name
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -44,6 +44,11 @@ steps:
         '--set-env-vars=ENVIRONMENT=production,BQ_PROJECT=scheels-data-marts,DEFAULT_MODEL=gemini-2.5-pro,ENABLE_WEIGHTING=True',
         '--set-secrets=GOOGLE_API_KEY=GOOGLE_API_KEY:latest,XAI_API_KEY=XAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest'
       ]
+
+# Substitutions for dynamic values
+substitutions:
+  _SERVICE_NAME: super-gemini-app
+  _REGION: us-central1
 
 options:
   logging: CLOUD_LOGGING_ONLY
