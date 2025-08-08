@@ -841,6 +841,12 @@
                 <button class="nav-button" onclick="showDashboard()">
                     <i>📊</i> Analytics Dashboard
                 </button>
+                <button class="nav-button" onclick="showSeasonalityConfig()">
+                    <i>🌱</i> Seasonality Config
+                </button>
+                <button class="nav-button" onclick="showToolsCatalog()">
+                    <i>🔧</i> Tools Catalog
+                </button>
             </div>
             
             <h3>⚙️ Model Configuration</h3>
@@ -1995,6 +2001,24 @@
             document.getElementById('chatView').style.display = 'none';
             document.getElementById('dashboardView').style.display = 'block';
             
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function showSeasonalityConfig() {
+            // Placeholder for seasonality configuration
+            alert('Seasonality Configuration feature coming soon!');
+            
+            // Update active button state
+            document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function showToolsCatalog() {
+            // Placeholder for tools catalog
+            alert('Tools Catalog feature coming soon!');
+            
+            // Update active button state
             document.querySelectorAll('.nav-button').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
         }
