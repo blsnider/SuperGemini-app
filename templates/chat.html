@@ -12,12 +12,12 @@
 }
 
 .chat-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     color: white;
     padding: 30px;
     border-radius: 20px;
     margin-bottom: 20px;
-    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 15px 40px rgba(255, 107, 107, 0.3);
     position: relative;
     overflow: hidden;
 }
@@ -105,8 +105,8 @@ select {
 
 select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #ff6b6b;
+    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
 }
 
 .input-container {
@@ -127,8 +127,8 @@ select:focus {
 
 #queryInput:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #ff6b6b;
+    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
     background: white;
 }
 
@@ -140,7 +140,7 @@ select:focus {
 
 button { 
     padding: 16px 28px; 
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     color: white; 
     border: none; 
     border-radius: 12px; 
@@ -148,7 +148,7 @@ button {
     font-size: 15px;
     font-weight: 600;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
     position: relative;
     overflow: hidden;
 }
@@ -170,7 +170,7 @@ button:hover::before {
 
 button:hover { 
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
 }
 
 button:disabled {
@@ -193,12 +193,12 @@ button:disabled {
     display: none;
     text-align: center;
     padding: 25px;
-    color: #667eea;
+    color: #ff6b6b;
 }
 
 .spinner {
-    border: 3px solid rgba(102, 126, 234, 0.1);
-    border-top: 3px solid #667eea;
+    border: 3px solid rgba(255, 107, 107, 0.1);
+    border-top: 3px solid #ff6b6b;
     border-radius: 50%;
     width: 40px;
     height: 40px;
@@ -214,7 +214,7 @@ button:disabled {
 .chat-container {
     flex: 1;
     overflow-y: auto;
-    overflow-x: hidden; /* Prevent horizontal scroll on container */
+    overflow-x: visible; /* FIXED: Allow tables to extend and show scrollbars */
     padding: 20px;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
@@ -237,7 +237,7 @@ button:disabled {
 
 .user-query { 
     background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    border-left: 4px solid #667eea;
+    border-left: 4px solid #ff6b6b;
 }
 
 .assistant-response { 
@@ -281,19 +281,30 @@ button:disabled {
     position: relative;
 }
 
+/* CRITICAL: Ensure message containers don't cut off tables */
+.message {
+    overflow: visible !important;
+    width: 100%;
+}
+
+.bot-message {
+    overflow: visible !important;
+    max-width: 100%;
+}
+
 /* Scroll indicator for tables */
 .scroll-indicator {
     position: absolute;
     right: 20px;
     top: 50%;
     transform: translateY(-50%);
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
     color: white;
     padding: 8px 12px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -312,26 +323,32 @@ button:disabled {
     border-radius: 12px;
     background: linear-gradient(to bottom, #ffffff, #f8fafc);
     box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    overflow: hidden;
+    overflow: visible; /* CRITICAL FIX: Changed from hidden to visible to show scrollbars */
 }
 
-/* Scrollable container */
+/* Scrollable container - FIXED to ensure scrollbar visibility */
 .table-scroll-container {
     width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow-x: auto !important; /* Force horizontal scroll with !important */
+    overflow-y: auto; /* Allow vertical scroll when needed */
     position: relative;
     background: white;
+    max-height: 600px;
     /* Always show scrollbar for better UX */
-    scrollbar-width: thin;
-    scrollbar-color: #667eea #e0e7ff;
+    scrollbar-width: auto; /* Changed from thin to auto for better visibility */
+    scrollbar-color: #ff6b6b #ffe0e0;
+    /* Ensure scrollbar is always visible even when not scrolling */
+    -webkit-overflow-scrolling: touch;
 }
 
-/* Force horizontal scrollbar to always be visible */
+/* Force horizontal scrollbar to always be visible and prominent */
 .table-scroll-container::-webkit-scrollbar {
-    height: 14px;
+    height: 16px; /* Increased for better visibility */
     background: #e0e7ff;
     border-radius: 0 0 10px 10px;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .table-scroll-container::-webkit-scrollbar-track {
@@ -340,7 +357,7 @@ button:disabled {
 }
 
 .table-scroll-container::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
     border-radius: 7px;
     border: 2px solid #e0e7ff;
 }
@@ -362,7 +379,7 @@ button:disabled {
     position: sticky;
     top: 0;
     z-index: 10;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
 }
 
 .data-table th {
@@ -412,7 +429,7 @@ button:disabled {
 }
 
 .data-table tbody tr:hover {
-    background: linear-gradient(to right, rgba(102, 126, 234, 0.05), rgba(102, 126, 234, 0.1));
+    background: linear-gradient(to right, rgba(255, 107, 107, 0.05), rgba(255, 107, 107, 0.1));
 }
 
 .data-table td {
@@ -476,8 +493,8 @@ button:disabled {
 
 .table-search-input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #ff6b6b;
+    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
 }
 
 .table-row-count {
@@ -592,7 +609,7 @@ button:disabled {
 
 .side-tray-header {
     padding: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     color: white;
     display: flex;
     justify-content: space-between;
@@ -734,5 +751,6 @@ button:disabled {
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ url_for('static', filename='js/aggrid_tables.js') }}?v={{ cache_buster }}"></script>
 <script src="{{ url_for('static', filename='js/chat.js?v=1754421210') }}"></script>
 {% endblock %}

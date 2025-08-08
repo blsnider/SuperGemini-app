@@ -1196,6 +1196,51 @@ def get_query_history():
             'queries': []
         }), 500
 
+@app.route('/api/chat/aggrid', methods=['POST'])
+def api_chat_aggrid():
+    """Process chat message and return AG-Grid compatible format"""
+    try:
+        data = request.get_json()
+        query = data.get('query')
+        model = data.get('model')
+        mcp_tool = data.get('mcp_tool')
+        snapshot_date = data.get('snapshot_date')
+        
+        if not query:
+            return jsonify({'success': False, 'error': 'Query is required'}), 400
+            
+        # Get response from chatbot
+        response = get_chatbot().chat(query, model, mcp_tool=mcp_tool, snapshot_date=snapshot_date)
+        
+        # Convert to AG-Grid format if there's data
+        if response.get('success') and response.get('has_data'):
+            results_data = response.get('results_data', [])
+            
+            # Generate column definitions from data
+            columns = []
+            if results_data and len(results_data) > 0:
+                for key in results_data[0].keys():
+                    columns.append({
+                        'field': key,
+                        'headerName': key.replace('_', ' ').title(),
+                        'sortable': True,
+                        'filter': True,
+                        'resizable': True,
+                        'minWidth': 100
+                    })
+            
+            # Add AG-Grid specific fields
+            response['aggrid'] = {
+                'columns': columns,
+                'rows': results_data
+            }
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"AG-Grid Chat API error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'

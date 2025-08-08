@@ -8,7 +8,14 @@
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     
-    <!-- Core CSS -->
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- AG-Grid CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/styles/ag-theme-quartz.css">
+    
+    <!-- Core CSS (after libraries to allow overrides) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ cache_buster }}">
     {% block extra_css %}{% endblock %}
     
@@ -31,7 +38,7 @@
     </div>
     
     <!-- Version Badge -->
-    <div class="version-badge" title="Version 2.9.1 - Restored cost tracking for LLM queries">v2.9.1</div>
+    <div class="version-badge" title="Version 3.0.0 - AG-Grid UI/UX with soft red theme">v3.0.0</div>
     
     <div class="main-container">
         <!-- Collapsible Sidebar -->
@@ -86,6 +93,12 @@
             {% block content %}{% endblock %}
         </div>
     </div>
+    
+    <!-- Bootstrap 5 JavaScript Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- AG-Grid JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
     
     <!-- Core JavaScript -->
     <script src="{{ url_for('static', filename='js/navigation.js') }}?v={{ cache_buster }}"></script>

@@ -285,11 +285,7 @@ class ChatManager {
             content += '<div class="results-table">' + this.escapeHtml(data.results) + '</div>';
         }
         
-        if (data.has_data && data.row_count > 20) {
-            content += `<div style="color: #666; font-style: italic; margin-top: 10px; text-align: center;">`;
-            content += `Showing first 20 rows of ${data.row_count.toLocaleString()} total results`;
-            content += `</div>`;
-        }
+        // AG-Grid handles all rows efficiently, no need for limiting message
         
         return content;
     }
@@ -315,62 +311,67 @@ class ChatManager {
     createSortableTable(data) {
         if (!data || data.length === 0) return '<div class="no-data">No data available</div>';
         
-        const headers = Object.keys(data[0]);
-        const tableId = 'table-' + Date.now();
-        const displayData = data.slice(0, 20); // Limit to first 20 rows for performance
+        // Create a unique container ID for this AG-Grid instance
+        const gridId = 'aggrid-' + Date.now();
         
-        // Build the new responsive table structure
-        let html = '<div class="table-responsive-wrapper">';
-        
-        // Add search functionality
-        html += '<div class="table-search-wrapper">';
-        html += `<input type="text" class="table-search-input" id="search-${tableId}" placeholder="Search in table..." onkeyup="window.chatManager.searchTable('${tableId}', this.value)">`;
-        html += `<span class="table-row-count" id="count-${tableId}">Showing ${displayData.length} of ${data.length} rows</span>`;
+        // Create container HTML with search box
+        let html = '<div class="aggrid-wrapper">';
+        html += '<div class="table-search-wrapper" style="margin-bottom: 10px;">';
+        html += `<input type="text" class="form-control" id="search-${gridId}" placeholder="Search in table..." style="max-width: 300px; display: inline-block;">`;
+        html += `<span class="ms-3">Total rows: ${data.length.toLocaleString()}</span>`;
+        html += `<button class="btn btn-sm btn-outline-primary ms-3" onclick="window.AGGridUtils.exportGridToCSV('${gridId}', 'export.csv')">Export CSV</button>`;
+        html += '</div>';
+        html += `<div id="${gridId}" style="height: 600px; width: 100%;"></div>`;
         html += '</div>';
         
-        // Create the scrollable container
-        html += '<div class="table-scroll-container">';
-        html += `<table class="data-table" id="${tableId}">`;
+        // Initialize AG-Grid after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            if (window.AGGridUtils && window.AGGridUtils.initDataGrid) {
+                // Initialize the grid with all data (AG-Grid handles large datasets efficiently)
+                window.AGGridUtils.initDataGrid(gridId, data);
+                
+                // Add global search functionality
+                window.AGGridUtils.addGlobalSearch(gridId, `search-${gridId}`);
+                
+                console.log(`AG-Grid initialized for ${gridId} with ${data.length} rows`);
+            } else {
+                console.error('AG-Grid utilities not loaded');
+                // Fallback to simple table if AG-Grid fails
+                document.getElementById(gridId).innerHTML = this.createFallbackTable(data);
+            }
+        }, 100);
         
-        // Table header
+        return html;
+    }
+    
+    // Fallback table creation method in case AG-Grid fails to load
+    createFallbackTable(data) {
+        if (!data || data.length === 0) return '<div class="no-data">No data available</div>';
+        
+        const headers = Object.keys(data[0]);
+        const displayData = data.slice(0, 100); // Show more rows in fallback
+        
+        let html = '<div style="overflow-x: auto;">';
+        html += '<table class="table table-striped table-hover">';
         html += '<thead><tr>';
         headers.forEach(header => {
-            const displayName = this.formatHeaderName(header);
-            html += `<th onclick="window.chatManager.sortTable('${tableId}', '${header}')" data-column="${header}">${displayName}</th>`;
+            html += `<th>${this.formatHeaderName(header)}</th>`;
         });
         html += '</tr></thead>';
-        
-        // Table body
         html += '<tbody>';
-        displayData.forEach((row, rowIndex) => {
-            html += `<tr data-row-index="${rowIndex}">`;
+        displayData.forEach(row => {
+            html += '<tr>';
             headers.forEach(header => {
-                const value = row[header];
-                const formattedValue = this.formatCellValue(value, header);
-                const cellClass = this.getNewCellClass(header, value);
-                html += `<td class="${cellClass}" data-column="${header}" data-value="${this.escapeHtml(String(value))}">${formattedValue}</td>`;
+                html += `<td>${this.formatCellValue(row[header], header)}</td>`;
             });
             html += '</tr>';
         });
         html += '</tbody>';
         html += '</table>';
-        html += '</div>'; // Close table-scroll-container
-        html += '</div>'; // Close table-responsive-wrapper
-        
-        // Store data for sorting and filtering
-        if (!this.tableData) this.tableData = {};
-        this.tableData[tableId] = {
-            fullData: data,
-            displayData: displayData,
-            headers: headers,
-            currentSort: { column: null, direction: null }
-        };
-        
-        // Add scroll detection after table is rendered
-        setTimeout(() => {
-            this.detectTableScroll(tableId);
-        }, 100);
-        
+        if (data.length > displayData.length) {
+            html += `<div class="text-center text-muted mt-2">Showing ${displayData.length} of ${data.length} rows</div>`;
+        }
+        html += '</div>';
         return html;
     }
     

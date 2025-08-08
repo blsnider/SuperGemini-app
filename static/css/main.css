@@ -11,7 +11,8 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     line-height: 1.6;
     color: #333;
-    background-color: #f5f5f5;
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+    min-height: 100vh;
 }
 
 /* Main Container */
@@ -20,10 +21,10 @@ body {
     min-height: 100vh;
 }
 
-/* Sidebar Styles */
+/* Sidebar Styles - Soft Red Theme */
 .sidebar {
     width: 300px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     color: white;
     padding: 20px;
     position: fixed;
@@ -46,7 +47,7 @@ body {
     opacity: 0.9;
 }
 
-/* Sidebar Toggle Button */
+/* Sidebar Toggle Button - Soft Red Theme */
 .sidebar-toggle {
     position: fixed;
     left: 20px;
@@ -54,19 +55,19 @@ body {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
     color: white;
     border: none;
     cursor: pointer;
     font-size: 24px;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
     transition: all 0.3s ease;
     z-index: 1001;
 }
 
 .sidebar-toggle:hover {
     transform: scale(1.1);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
 }
 
 .sidebar-toggle.open {
@@ -122,7 +123,7 @@ body {
     position: fixed;
     top: 20px;
     right: 140px; /* Position to the left of health indicator */
-    background: rgba(102, 126, 234, 0.9);
+    background: rgba(255, 107, 107, 0.9);
     color: #ffffff;
     padding: 6px 16px;
     border-radius: 20px;
@@ -137,9 +138,9 @@ body {
 }
 
 .version-badge:hover {
-    background: rgba(118, 75, 162, 0.9);
+    background: rgba(238, 90, 111, 0.9);
     transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.25);
 }
 
 /* Navigation Buttons */
@@ -230,8 +231,8 @@ body {
 
 /* Loading Spinner */
 .spinner {
-    border: 3px solid rgba(102, 126, 234, 0.1);
-    border-top: 3px solid #667eea;
+    border: 3px solid rgba(255, 107, 107, 0.1);
+    border-top: 3px solid #ff6b6b;
     border-radius: 50%;
     width: 40px;
     height: 40px;
@@ -276,8 +277,8 @@ body {
 
 .table-search-box input:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #ff6b6b;
+    box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
 }
 
 .table-search-box .search-icon {
@@ -361,13 +362,13 @@ body {
 
 .sortable-table th.sort-asc::after {
     content: ' ↑';
-    color: #667eea;
+    color: #ff6b6b;
     font-weight: bold;
 }
 
 .sortable-table th.sort-desc::after {
     content: ' ↓';
-    color: #667eea;
+    color: #ff6b6b;
     font-weight: bold;
 }
 
@@ -384,7 +385,7 @@ body {
 }
 
 .table-container::-webkit-scrollbar-thumb {
-    background: linear-gradient(to bottom, #667eea, #764ba2);
+    background: linear-gradient(to bottom, #ff6b6b, #ee5a6f);
     border-radius: 8px;
     border: 2px solid #f1f5f9;
     min-height: 30px;
@@ -401,7 +402,7 @@ body {
 /* Firefox scrollbar - more prominent */
 .table-container {
     scrollbar-width: auto;  /* Use default width for better visibility */
-    scrollbar-color: #667eea #f1f5f9;
+    scrollbar-color: #ff6b6b #f1f5f9;
 }
 
 /* Force horizontal scroll on parent containers */

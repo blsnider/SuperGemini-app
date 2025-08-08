@@ -1,0 +1,32 @@
+# Binary or non-code artifacts
+*.pyc
+*.log
+*.bak
+*.zip
+*.tar
+*.tar.gz
+*.db
+*.sqlite
+*.so
+*.dll
+
+# Compiled or cache folders
+__pycache__/
+venv/
+node_modules/
+build/
+dist/
+
+# IDE/editor metadata
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Shell scripts (unless relevant to logic)
+*.sh
+
+# Cloud/infra configs (unless explicitly needed)
+*.yaml
+*.yml
+.env
