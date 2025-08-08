@@ -40,3 +40,4 @@ toolbox
 .DS_Store
 Thumbs.db
 EOF
+myenv/

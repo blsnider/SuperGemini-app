@@ -133,7 +133,7 @@ except Exception as e:
 # Use your existing configuration pattern
 @dataclass
 class AppConfig:
-    bq_project: str = os.getenv('BQ_PROJECT', 'scheels-data-marts')
+    bq_project: str = os.getenv('BQ_PROJECT', 'sis-data-marts')
     model_name: str = os.getenv('DEFAULT_MODEL', 'gemini-2.5-pro')
     preview_rows: int = int(os.getenv('PREVIEW_ROWS', '20'))
     enable_weighting: bool = os.getenv('ENABLE_WEIGHTING', 'True').lower() == 'true'
@@ -1162,12 +1162,10 @@ def api_dashboard_chart(chart_type):
 def health_check():
     """Health check endpoint"""
     try:
-        # Test chatbot initialization
-        bot = get_chatbot()
-        status = bot.get_toolbox_status() if bot and hasattr(bot, 'get_toolbox_status') else {'status': 'unknown'}
         return jsonify({
-            'status': 'healthy' if status.get('toolbox_enabled', False) else 'degraded',
-            'chatbot': status
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'version': '3.0.0'
         })
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500

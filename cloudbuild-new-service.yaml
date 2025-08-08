@@ -1,0 +1,31 @@
+steps:
+  # Build with no-cache and unique tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', '--no-cache', '-t',
+      'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini-v3:latest',
+      '.'
+    ]
+
+  # Push the new image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini-v3:latest'
+    ]
+
+  # Deploy to a NEW service name
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'supergemini-v3',  # NEW SERVICE NAME
+      '--image=us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini-v3:latest',
+      '--region=us-central1',
+      '--project=sis-sandbox-463113',
+      '--platform=managed',
+      '--allow-unauthenticated',
+      '--service-account=supergemini-client@sis-sandbox-463113.iam.gserviceaccount.com',
+      '--port=8080'
+    ]
+
+timeout: 1200s
