@@ -1,7 +1,7 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: [
-      'build', '-t',
+      'build', '--no-cache', '-t',
       'us-central1-docker.pkg.dev/sis-sandbox-463113/super-gemini-repo/super-gemini:latest',
       '.'
     ]
