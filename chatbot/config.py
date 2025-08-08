@@ -227,6 +227,13 @@ def get_available_models():
             "capabilities": ["text", "code", "fast", "budget"],
             "recommended_for": ["quick_queries", "cost_effective", "high_volume"]
         },
+        "gpt-5": {
+            "provider": "openai",
+            "description": "OpenAI's most advanced model with superior reasoning",
+            "context_window": 400000,
+            "capabilities": ["reasoning", "complex_logic", "advanced"],
+            "recommended_for": ["complex_reasoning", "mathematical_analysis", "research"]
+        },
         "gpt-5-2025-08-07": {
             "provider": "openai",
             "description": "Advanced reasoning model (preview)",
@@ -280,7 +287,7 @@ def get_model_recommendations(query_type: str = None, budget: str = 'medium') ->
         elif budget == 'medium':
             return ['gemini-2.5-flash', 'claude-3.5-sonnet-20241022', 'grok-3']
         else:  # high budget
-            return ['gemini-2.5-pro', 'gpt-4o', 'claude-sonnet-4-20250514']
+            return ['gpt-5', 'gemini-2.5-pro', 'claude-sonnet-4-20250514']
     
     elif query_type == 'complex':
         if budget == 'low':
@@ -288,19 +295,19 @@ def get_model_recommendations(query_type: str = None, budget: str = 'medium') ->
         elif budget == 'medium':
             return ['gemini-2.5-pro', 'claude-sonnet-4-20250514', 'gpt-4o']
         else:  # high budget
-            return ['claude-opus-4-20250514', 'gemini-2.5-pro', 'gpt-4o']
+            return ['gpt-5', 'claude-opus-4-20250514', 'gemini-2.5-pro']
     
     elif query_type == 'reasoning':
         return ['o1-preview', 'claude-opus-4-20250514', 'grok-4-0709', 'gemini-2.5-pro']
     
     elif query_type == 'creative':
-        return ['claude-opus-4-20250514', 'gpt-4o', 'grok-4-0709', 'gemini-2.5-pro']
+        return ['gpt-5', 'claude-opus-4-20250514', 'grok-4-0709', 'gemini-2.5-pro']
     
     elif query_type == 'code':
-        return ['claude-sonnet-4-20250514', 'gpt-4o', 'gemini-2.5-pro', 'claude-3.5-sonnet-20241022']
+        return ['gpt-5', 'claude-sonnet-4-20250514', 'gemini-2.5-pro', 'gpt-4o']
     
     else:  # default recommendations
-        return ['gemini-2.5-pro', 'claude-sonnet-4-20250514', 'gpt-4o', 'grok-3']
+        return ['gpt-5', 'gemini-2.5-pro', 'claude-sonnet-4-20250514', 'gpt-4o']
 
 # Cost estimation function removed
 

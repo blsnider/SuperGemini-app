@@ -313,59 +313,91 @@ class ChatManager {
     }
     
     createSortableTable(data) {
-        if (!data || data.length === 0) return 'No data available';
+        if (!data || data.length === 0) return '<div class="no-data">No data available</div>';
         
         const headers = Object.keys(data[0]);
         const tableId = 'table-' + Date.now();
+        const displayData = data.slice(0, 20); // Limit to first 20 rows for performance
         
-        // Create wrapper with search box
-        let html = '<div class="table-wrapper">';
+        // Build the new responsive table structure
+        let html = '<div class="table-responsive-wrapper">';
         
-        // Add search box on the left
-        html += '<div class="table-search-container">';
-        html += '<div class="table-search-box">';
-        html += `<input type="text" id="search-${tableId}" placeholder="Search table..." onkeyup="window.chatManager.searchTable('${tableId}', this.value)">`;
-        html += '<span class="search-icon">🔍</span>';
-        html += '</div>';
-        html += '<span class="search-results-count" id="search-count-${tableId}" style="color: #6b7280; font-size: 14px;"></span>';
+        // Add search functionality
+        html += '<div class="table-search-wrapper">';
+        html += `<input type="text" class="table-search-input" id="search-${tableId}" placeholder="Search in table..." onkeyup="window.chatManager.searchTable('${tableId}', this.value)">`;
+        html += `<span class="table-row-count" id="count-${tableId}">Showing ${displayData.length} of ${data.length} rows</span>`;
         html += '</div>';
         
-        // Start table container
-        html += '<div class="table-container" id="container-' + tableId + '">';
-        html += `<table class="sortable-table" id="${tableId}">`;
+        // Create the scrollable container
+        html += '<div class="table-scroll-container">';
+        html += `<table class="data-table" id="${tableId}">`;
         
-        // Create header
+        // Table header
         html += '<thead><tr>';
         headers.forEach(header => {
             const displayName = this.formatHeaderName(header);
-            html += `<th class="sortable" onclick="window.chatManager.sortTable('${tableId}', '${header}')">${displayName}</th>`;
+            html += `<th onclick="window.chatManager.sortTable('${tableId}', '${header}')" data-column="${header}">${displayName}</th>`;
         });
         html += '</tr></thead>';
         
-        // Create body
+        // Table body
         html += '<tbody>';
-        data.slice(0, 20).forEach((row, index) => {
-            html += `<tr data-row-index="${index}">`;
+        displayData.forEach((row, rowIndex) => {
+            html += `<tr data-row-index="${rowIndex}">`;
             headers.forEach(header => {
                 const value = row[header];
                 const formattedValue = this.formatCellValue(value, header);
-                const cellClass = this.getCellClass(header);
-                html += `<td class="${cellClass}" data-column="${header}">${formattedValue}</td>`;
+                const cellClass = this.getNewCellClass(header, value);
+                html += `<td class="${cellClass}" data-column="${header}" data-value="${this.escapeHtml(String(value))}">${formattedValue}</td>`;
             });
             html += '</tr>';
         });
-        html += '</tbody></table>';
-        html += '</div>'; // Close table-container
-        html += '</div>'; // Close table-wrapper
+        html += '</tbody>';
+        html += '</table>';
+        html += '</div>'; // Close table-scroll-container
+        html += '</div>'; // Close table-responsive-wrapper
         
-        // Store data for sorting
+        // Store data for sorting and filtering
         if (!this.tableData) this.tableData = {};
-        this.tableData[tableId] = data.slice(0, 20);
+        this.tableData[tableId] = {
+            fullData: data,
+            displayData: displayData,
+            headers: headers,
+            currentSort: { column: null, direction: null }
+        };
         
-        // Check for scroll after render
-        setTimeout(() => this.checkTableScroll(tableId), 100);
+        // Add scroll detection after table is rendered
+        setTimeout(() => {
+            this.detectTableScroll(tableId);
+        }, 100);
         
         return html;
+    }
+    
+    // New method for determining cell classes
+    getNewCellClass(header, value) {
+        const columnLower = header.toLowerCase();
+        
+        // Currency columns
+        if ((columnLower.includes('cost') || columnLower.includes('revenue') || 
+             columnLower.includes('price') || columnLower.includes('sales') ||
+             columnLower.includes('profit')) && !columnLower.includes('margin')) {
+            return 'value-currency';
+        }
+        
+        // Percentage columns
+        if (columnLower.includes('margin') || columnLower.includes('percent') || 
+            columnLower.includes('pct') || columnLower.includes('%')) {
+            return 'value-percentage';
+        }
+        
+        // Numeric columns
+        if (columnLower.includes('units') || columnLower.includes('count') || 
+            columnLower.includes('quantity') || columnLower.includes('qty')) {
+            return 'value-number';
+        }
+        
+        return '';
     }
     
     formatHeaderName(header) {
@@ -527,102 +559,128 @@ class ChatManager {
         this.addMessage('error', message);
     }
     
-    // Table search functionality
+    // Enhanced table search functionality
     searchTable(tableId, searchValue) {
         const table = document.getElementById(tableId);
         if (!table) return;
         
-        const rows = table.querySelectorAll('tbody tr');
-        const searchLower = searchValue.toLowerCase();
+        const tbody = table.querySelector('tbody');
+        const rows = tbody.querySelectorAll('tr');
+        const searchLower = searchValue.toLowerCase().trim();
         let visibleCount = 0;
+        const totalRows = rows.length;
         
         rows.forEach(row => {
-            let rowText = '';
-            row.querySelectorAll('td').forEach(td => {
-                rowText += td.textContent.toLowerCase() + ' ';
+            let rowMatches = false;
+            const cells = row.querySelectorAll('td');
+            
+            cells.forEach(td => {
+                const cellText = td.textContent.toLowerCase();
+                td.classList.remove('highlight');
+                
+                if (searchLower && cellText.includes(searchLower)) {
+                    rowMatches = true;
+                    td.classList.add('highlight');
+                }
             });
             
-            if (rowText.includes(searchLower)) {
+            if (!searchLower || rowMatches) {
                 row.style.display = '';
                 visibleCount++;
-                
-                // Highlight matching cells
-                row.querySelectorAll('td').forEach(td => {
-                    const cellText = td.textContent.toLowerCase();
-                    if (searchValue && cellText.includes(searchLower)) {
-                        td.classList.add('highlight');
-                    } else {
-                        td.classList.remove('highlight');
-                    }
-                });
             } else {
                 row.style.display = 'none';
             }
         });
         
-        // Update count
-        const countElement = document.getElementById('search-count-' + tableId);
+        // Update the row count display
+        const countElement = document.getElementById('count-' + tableId);
         if (countElement) {
-            if (searchValue) {
-                countElement.textContent = `${visibleCount} of ${rows.length} rows`;
+            const tableInfo = this.tableData[tableId];
+            const totalDataRows = tableInfo ? tableInfo.fullData.length : totalRows;
+            
+            if (searchLower) {
+                countElement.textContent = `Found ${visibleCount} of ${totalRows} displayed rows (${totalDataRows} total)`;
             } else {
-                countElement.textContent = '';
+                countElement.textContent = `Showing ${totalRows} of ${totalDataRows} rows`;
             }
         }
     }
     
-    // Table sorting functionality
+    // Enhanced table sorting functionality
     sortTable(tableId, column) {
         const table = document.getElementById(tableId);
-        if (!table || !this.tableData || !this.tableData[tableId]) return;
+        const tableInfo = this.tableData[tableId];
+        if (!table || !tableInfo) return;
         
-        // Get current sort state
-        const th = table.querySelector(`th:nth-child(${this.getColumnIndex(table, column) + 1})`);
-        const currentSort = th.dataset.sort || 'none';
-        let newSort = currentSort === 'asc' ? 'desc' : 'asc';
+        // Find the header element
+        const headers = table.querySelectorAll('thead th');
+        let columnIndex = -1;
+        let targetHeader = null;
         
-        // Reset all headers
-        table.querySelectorAll('th').forEach(header => {
-            header.dataset.sort = 'none';
-            header.classList.remove('sort-asc', 'sort-desc');
+        headers.forEach((header, index) => {
+            if (header.dataset.column === column || header.textContent.toLowerCase().replace(/ /g, '_') === column.toLowerCase()) {
+                columnIndex = index;
+                targetHeader = header;
+            }
+            // Reset all headers
+            header.classList.remove('sort-active', 'sort-asc', 'sort-desc');
         });
         
-        // Sort data
-        const sortedData = [...this.tableData[tableId]].sort((a, b) => {
+        if (columnIndex === -1 || !targetHeader) return;
+        
+        // Determine sort direction
+        let sortDirection = 'asc';
+        if (tableInfo.currentSort.column === column) {
+            sortDirection = tableInfo.currentSort.direction === 'asc' ? 'desc' : 'asc';
+        }
+        
+        // Update sort state
+        tableInfo.currentSort = { column, direction: sortDirection };
+        targetHeader.classList.add('sort-active', `sort-${sortDirection}`);
+        
+        // Sort the display data
+        const sortedData = [...tableInfo.displayData].sort((a, b) => {
             let aVal = a[column];
             let bVal = b[column];
             
-            // Handle numeric values
-            if (!isNaN(aVal) && !isNaN(bVal)) {
-                aVal = parseFloat(aVal);
-                bVal = parseFloat(bVal);
+            // Handle null/undefined values
+            if (aVal === null || aVal === undefined) aVal = '';
+            if (bVal === null || bVal === undefined) bVal = '';
+            
+            // Try to parse as numbers
+            const aNum = parseFloat(String(aVal).replace(/[$,%]/g, ''));
+            const bNum = parseFloat(String(bVal).replace(/[$,%]/g, ''));
+            
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
             }
             
-            if (newSort === 'asc') {
-                return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+            // Fall back to string comparison
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            
+            if (sortDirection === 'asc') {
+                return aStr.localeCompare(bStr);
             } else {
-                return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+                return bStr.localeCompare(aStr);
             }
         });
         
-        // Update header
-        th.dataset.sort = newSort;
-        th.classList.add(newSort === 'asc' ? 'sort-asc' : 'sort-desc');
-        
-        // Re-render table body
+        // Update the table body
         const tbody = table.querySelector('tbody');
         tbody.innerHTML = '';
         
-        sortedData.forEach((row, index) => {
+        sortedData.forEach((row, rowIndex) => {
             const tr = document.createElement('tr');
-            tr.dataset.rowIndex = index;
+            tr.dataset.rowIndex = rowIndex;
             
-            Object.keys(row).forEach(header => {
+            tableInfo.headers.forEach(header => {
                 const td = document.createElement('td');
-                td.className = this.getCellClass(header);
+                const value = row[header];
+                td.className = this.getNewCellClass(header, value);
                 td.dataset.column = header;
-                const formattedValue = this.formatCellValue(row[header], header);
-                td.textContent = typeof formattedValue === 'string' ? formattedValue : String(formattedValue);
+                td.dataset.value = this.escapeHtml(String(value));
+                td.innerHTML = this.formatCellValue(value, header);
                 tr.appendChild(td);
             });
             
@@ -647,46 +705,42 @@ class ChatManager {
         return 0;
     }
     
-    // Check if table needs scroll indicators
-    checkTableScroll(tableId) {
-        const container = document.getElementById('container-' + tableId);
-        if (!container) return;
-        
-        const table = container.querySelector('table');
+    // Detect if table needs horizontal scrolling
+    detectTableScroll(tableId) {
+        const table = document.getElementById(tableId);
         if (!table) return;
         
-        // Force the container to recognize table's actual width
-        container.style.width = '100%';
-        container.style.overflowX = 'auto';
+        const wrapper = table.closest('.table-responsive-wrapper');
+        const scrollContainer = table.closest('.table-scroll-container');
         
-        // Debug logging
-        console.log(`Table ${tableId} dimensions:`, {
-            containerWidth: container.clientWidth,
-            tableWidth: table.scrollWidth,
-            offsetWidth: table.offsetWidth,
-            needsScroll: table.scrollWidth > container.clientWidth
-        });
+        if (!wrapper || !scrollContainer) return;
         
-        // Force scrollbar if table is wider than container
-        if (table.scrollWidth > container.clientWidth) {
-            container.style.overflowX = 'scroll';
-            container.classList.add('has-scroll', 'force-scroll');
-        }
+        // Check if table is wider than container
+        const needsScroll = table.scrollWidth > scrollContainer.clientWidth;
         
-        const hasHorizontalScroll = table.scrollWidth > container.clientWidth;
-        const hasVerticalScroll = container.scrollHeight > container.clientHeight;
-        
-        if (hasHorizontalScroll || hasVerticalScroll) {
-            container.classList.add('has-scroll');
-            
-            // Force horizontal scrollbar if table is wider
-            if (table.scrollWidth > container.clientWidth) {
-                container.classList.add('force-scroll');
+        if (needsScroll) {
+            // Add a visual indicator that the table can be scrolled
+            if (!wrapper.querySelector('.scroll-indicator')) {
+                const indicator = document.createElement('div');
+                indicator.className = 'scroll-indicator active';
+                indicator.innerHTML = '← Scroll to see more →';
+                wrapper.style.position = 'relative';
+                wrapper.appendChild(indicator);
+                
+                // Hide indicator after first scroll
+                scrollContainer.addEventListener('scroll', function() {
+                    if (this.scrollLeft > 10) {
+                        indicator.classList.remove('active');
+                    }
+                }, { once: true });
             }
-        } else {
-            container.classList.remove('has-scroll');
-            container.classList.remove('force-scroll');
         }
+        
+        console.log(`Table ${tableId} scroll detection:`, {
+            tableWidth: table.scrollWidth,
+            containerWidth: scrollContainer.clientWidth,
+            needsScroll: needsScroll
+        });
     }
 }
 
