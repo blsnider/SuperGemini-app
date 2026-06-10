@@ -115,33 +115,64 @@ def get_times(schedule_id: str, date: str, players: int, holes: int = 18) -> lis
 
 
 def book(slot: dict, players: int) -> str:
-    """Two-step hold/commit (§2.1). Returns the reservation id."""
+    """Two-step hold/commit. Returns the final TTID.
+
+    Payloads verified live 2026-06-10 via /booking-test (booked + canceled a
+    throwaway El Zagal slot): hold returns reservation_id, commit consumes it
+    via pending_reservation_id and returns the final TTID.
+    """
     s = _auth_session()
 
-    # TODO(discovery §2.1): verify both payloads against captured traffic.
     hold = s.post(
         f"{config.FOREUP_BASE_URL}/pending_reservation",
-        json={"time": slot["time"], "holes": slot.get("holes", 18),
-              "players": players, "schedule_id": slot["schedule_id"]},
+        json={
+            "time": slot["time"], "holes": slot.get("holes", 18),
+            "players": players, "carts": False,
+            "schedule_id": slot["schedule_id"],
+            "teesheet_side_id": slot.get("teesheet_side_id"),
+            "course_id": slot.get("course_id"),
+            "booking_class_id": config.FOREUP_BOOKING_CLASS, "duration": 1,
+            "foreup_discount": False, "foreup_trade_discount_rate": 0,
+            "trade_min_players": 0, "cart_fee": 0, "cart_fee_tax": 0,
+            "green_fee": slot.get("green_fee", 0), "green_fee_tax": 0,
+        },
         timeout=15,
     )
-    store.audit("foreup.hold", {"status": hold.status_code, "slot": slot.get("time")})
-    if hold.status_code != 200:
-        raise ForeUpError(f"Hold failed: HTTP {hold.status_code}")
-    reservation_id = hold.json().get("reservation_id")
+    store.audit("foreup.hold", {"status": hold.status_code, "slot": slot.get("time"),
+                                "body": hold.text[:300]})
+    if hold.status_code != 200 or not hold.json().get("success"):
+        raise ForeUpError(f"Hold failed: HTTP {hold.status_code} {hold.text[:200]}")
+    pending_id = hold.json().get("reservation_id")
 
+    commit_payload = dict(slot)
+    commit_payload.update({
+        "pending_reservation_id": pending_id, "players": players,
+        "carts": False, "promo_code": "", "customer_message": "",
+        "notes": "", "duration": 1,
+    })
     commit = s.post(
         f"{config.FOREUP_BASE_URL}/users/reservations",
-        json={**slot, "players": players, "pending_reservation_id": reservation_id},
+        json=commit_payload,
         timeout=15,
     )
-    store.audit("foreup.commit", {"status": commit.status_code, "slot": slot.get("time")})
+    store.audit("foreup.commit", {"status": commit.status_code, "slot": slot.get("time"),
+                                  "body": commit.text[:300]})
     if commit.status_code != 200:
         raise ForeUpError(f"Commit failed after hold: HTTP {commit.status_code}")
-    booked_id = commit.json().get("TTID") or commit.json().get("reservation_id") or reservation_id
+    booked_id = commit.json().get("TTID") or commit.json().get("teetime_id")
     if not booked_id:
-        raise ForeUpError("Booking committed but no reservation id found — recheck §2.1")
+        raise ForeUpError("Commit returned no TTID — verify account reservations manually")
     return str(booked_id)
+
+
+def list_reservations() -> tuple[int, str]:
+    """Raw reservations list for the account — used to reconcile state."""
+    r = _auth_session().get(
+        f"{config.FOREUP_BASE_URL}/users/reservations",
+        params={"api_key": "no_limits"},
+        timeout=15,
+    )
+    return r.status_code, r.text
 
 
 def cancel(reservation_id: str) -> bool:
@@ -154,16 +185,16 @@ def cancel(reservation_id: str) -> bool:
     s = _auth_session()
     for attempt in range(3):
         try:
-            # TODO(discovery §2.1): verify method (DELETE vs POST) and path.
+            # Verified live: DELETE returns {"success":true,"msg":"Reservation Cancelled"}.
             resp = s.delete(
                 f"{config.FOREUP_BASE_URL}/users/reservations/{reservation_id}",
                 timeout=15,
             )
             store.audit("foreup.cancel", {
                 "status": resp.status_code, "reservation_id": reservation_id,
-                "attempt": attempt + 1,
+                "attempt": attempt + 1, "body": resp.text[:200],
             })
-            if resp.status_code in (200, 204):
+            if resp.status_code in (200, 204) and '"success":true' in resp.text.replace(" ", ""):
                 return True
         except requests.RequestException as e:
             store.audit("foreup.cancel.exception", {"error": str(e), "attempt": attempt + 1})

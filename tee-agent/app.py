@@ -236,6 +236,29 @@ def discover():
     return result
 
 
+@app.post("/booking-test")
+def booking_test():
+    """§2.3 one-shot: book + immediately cancel a throwaway slot. Remove after."""
+    _require_scheduler_token()
+    import json
+    import discover as discover_mod
+
+    date_str = request.args.get("date", "")
+    result = discover_mod.booking_test(date_str)
+    logger.info("BOOKING TEST RESULT: %s", json.dumps(result)[:60000])
+    return result
+
+
+@app.route("/reservations", methods=["GET", "POST"])
+def reservations():
+    """Raw account reservations from ForeUp — state reconciliation check."""
+    _require_scheduler_token()
+    import foreup
+    status_code, body = foreup.list_reservations()
+    logger.info("RESERVATIONS CHECK: status=%s body=%s", status_code, body[:5000])
+    return {"foreup_status": status_code, "body": body[:5000]}
+
+
 @app.get("/")
 def index():
     return f"""<!doctype html><html><head><meta charset='utf-8'>

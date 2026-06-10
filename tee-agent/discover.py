@@ -191,3 +191,109 @@ def run(date_str: str) -> dict:
                 out["times_probe_auth"][f"sched={sid} bc={bc}"] = {"error": str(e)}
 
     return out
+
+
+def booking_test(date_str: str) -> dict:
+    """§2.3 verification: book ONE throwaway slot (last of the day, El Zagal)
+    and cancel it immediately. Captures every raw payload/response so
+    foreup.py can be corrected against reality. Cancel runs in `finally` —
+    a leftover reservation is reported loudly, never silent.
+    """
+    out = {"date": date_str, "steps": []}
+    s = requests.Session()
+    s.headers.update(UA)
+
+    def step(name, resp):
+        rec = {"step": name, "status": resp.status_code, "body": resp.text[:1200]}
+        out["steps"].append(rec)
+        return rec
+
+    r = s.post(config.FOREUP_LOGIN_URL, data={
+        "username": config.load_secret("foreup-username"),
+        "password": config.load_secret("foreup-password"),
+        "course_id": config.FOREUP_LOGIN_COURSE_ID,
+        "booking_class_id": config.FOREUP_BOOKING_CLASS,
+        "api_key": "no_limits"}, timeout=15)
+    jwt = r.json().get("jwt") if r.status_code == 200 else None
+    out["steps"].append({"step": "login", "status": r.status_code, "jwt": bool(jwt)})
+    if not jwt:
+        return out
+    s.headers.update({"X-Authorization": f"Bearer {jwt}", "Api-Key": "no_limits"})
+
+    r = s.get(f"{config.FOREUP_BASE_URL}/times", params={
+        "time": "all", "date": date_str, "holes": "all", "players": 0,
+        "schedule_id": config.COURSE_SCHEDULE_IDS["El Zagal"],
+        "booking_class": config.FOREUP_BOOKING_CLASS,
+        "specials_only": 0, "api_key": "no_limits"}, timeout=15)
+    slots = r.json() if r.text.lstrip().startswith("[") else []
+    out["steps"].append({"step": "times", "status": r.status_code, "n_slots": len(slots)})
+    if not slots:
+        return out
+    slot = slots[-1]  # least desirable: last tee time of the day
+    out["chosen_slot"] = {k: slot.get(k) for k in
+                          ("time", "schedule_id", "course_id", "teesheet_side_id",
+                           "holes", "green_fee", "require_credit_card", "booking_class_id")}
+
+    ttid = None
+    try:
+        pend_payload = {
+            "time": slot["time"], "holes": slot.get("holes", 9), "players": 1,
+            "carts": False, "schedule_id": slot["schedule_id"],
+            "teesheet_side_id": slot.get("teesheet_side_id"),
+            "course_id": slot.get("course_id"),
+            "booking_class_id": config.FOREUP_BOOKING_CLASS, "duration": 1,
+            "foreup_discount": False, "foreup_trade_discount_rate": 0,
+            "trade_min_players": 0, "cart_fee": 0, "cart_fee_tax": 0,
+            "green_fee": slot.get("green_fee", 0), "green_fee_tax": 0,
+        }
+        r = s.post(f"{config.FOREUP_BASE_URL}/pending_reservation",
+                   json=pend_payload, timeout=15)
+        rec = step("pending_reservation(json)", r)
+        pend = {}
+        try:
+            pend = r.json()
+        except Exception:
+            pass
+        if not pend.get("success"):
+            r = s.post(f"{config.FOREUP_BASE_URL}/pending_reservation",
+                       data=pend_payload, timeout=15)
+            rec = step("pending_reservation(form)", r)
+            try:
+                pend = r.json()
+            except Exception:
+                pend = {}
+        pending_id = pend.get("reservation_id") or pend.get("id")
+        out["pending_id"] = pending_id
+        if not pending_id:
+            return out
+
+        commit = dict(slot)
+        commit.update({"pending_reservation_id": pending_id, "players": 1,
+                       "carts": False, "promo_code": "", "customer_message": "",
+                       "notes": "", "duration": 1})
+        r = s.post(f"{config.FOREUP_BASE_URL}/users/reservations",
+                   json=commit, timeout=15)
+        step("commit_reservation", r)
+        try:
+            booked = r.json()
+            ttid = booked.get("TTID") or booked.get("teetime_id") or booked.get("reservation_id")
+        except Exception:
+            ttid = None
+        out["ttid"] = ttid
+    finally:
+        if ttid:
+            for attempt in range(3):
+                r = s.delete(f"{config.FOREUP_BASE_URL}/users/reservations/{ttid}",
+                             timeout=15)
+                step(f"cancel_attempt_{attempt + 1}", r)
+                if r.status_code in (200, 204):
+                    out["canceled"] = True
+                    break
+            else:
+                out["canceled"] = False
+                out["ALERT"] = ("RESERVATION STILL ACTIVE — cancel manually NOW: "
+                                f"El Zagal {slot.get('time')} (pro shop "
+                                f"{config.PRO_SHOP_PHONES['El Zagal']})")
+        elif out.get("pending_id"):
+            out["note"] = "Hold created but never committed; ForeUp expires pending holds on their own."
+    return out
