@@ -165,6 +165,60 @@ window {prefs['time_window'][0]}–{prefs['time_window'][1]}</span></header>
 </main></body></html>"""
 
 
+@app.get("/times")
+def times():
+    """Live availability viewer: what the sniper would see (and how it scores
+    each slot). Usage: /times?date=YYYY-MM-DD&token=...  Date defaults to the
+    next release-window day (today + 3)."""
+    _require_scheduler_token()
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    import scoring
+    import sniper
+
+    prefs = store.get_preferences()
+    tz = ZoneInfo(config.LOCAL_TZ)
+    date_str = request.args.get("date") or str((datetime.now(tz) + timedelta(days=prefs["release_days_ahead"])).date())
+    target = datetime.strptime(date_str, "%Y-%m-%d").date()
+
+    courses = {c: sid for c, sid in config.COURSE_SCHEDULE_IDS.items() if sid}
+    body, errors = [], []
+    if not courses:
+        errors.append("No schedule_ids configured yet — finish the §2.1 ForeUp capture first.")
+    for course, schedule_id in courses.items():
+        try:
+            import foreup
+            for raw in foreup.get_times(schedule_id, target.strftime("%m-%d-%Y"),
+                                        prefs["players"], prefs["holes"]):
+                slot_time = sniper._parse_slot_time(raw, tz)
+                if not slot_time:
+                    continue
+                s = scoring.score(slot_time, course, prefs)
+                body.append((slot_time, course, s))
+        except Exception as e:
+            errors.append(f"{course}: {e}")
+
+    body.sort(key=lambda r: (-(r[2] if r[2] is not None else -9999), r[0]))
+    rows = "".join(
+        f"<tr><td><strong>{t.strftime('%-I:%M %p')}</strong></td><td>{c}</td>"
+        f"<td>{'—' if s is None else f'{s:.0f}'}</td>"
+        f"<td>{'<span class=pill style=background:#dcf3e3;color:#1f5c34>would book</span>' if i == 0 and s is not None else ''}</td></tr>"
+        for i, (t, c, s) in enumerate(body)
+    )
+    err_html = "".join(f"<div class='empty flag'>{e}</div>" for e in errors)
+    table = (f"<table><tr><th>Time</th><th>Course</th><th>Score</th><th></th></tr>{rows}</table>"
+             if rows else "<div class='empty'>No open slots returned.</div>")
+    return f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>tee-agent · availability</title><style>{STATUS_CSS}</style></head><body>
+<header><h1>⛳ availability</h1>
+<span style='margin-left:auto;font-size:13px;opacity:.85'>{target.strftime('%A %b %-d')} ·
+window {prefs['time_window'][0]}–{prefs['time_window'][1]}</span></header>
+<main>{err_html}<div class='card'>{table}</div>
+<footer>Score = course rank + closeness to ideal time ({prefs['ideal_time']}); '—' = outside
+your window. Change date with <code>?date=YYYY-MM-DD</code>.</footer></main></body></html>"""
+
+
 @app.get("/")
 def index():
     return f"""<!doctype html><html><head><meta charset='utf-8'>
