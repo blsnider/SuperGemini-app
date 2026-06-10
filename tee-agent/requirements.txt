@@ -1,0 +1,9 @@
+flask>=3.0
+gunicorn>=21.0
+requests>=2.31
+google-cloud-firestore>=2.14
+google-cloud-secret-manager>=2.18
+google-api-python-client>=2.100
+google-auth>=2.23
+twilio>=8.10
+sendgrid>=6.10
