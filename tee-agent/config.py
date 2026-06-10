@@ -21,24 +21,35 @@ FARGO_LON = -96.7898
 LOCAL_TZ = "America/Chicago"
 
 # ---------------------------------------------------------------------------
-# TODO(discovery §2.1): fill these in after capturing the real endpoints in
-# DevTools. Values below are the typical ForeUp shapes and WILL need edits.
+# ForeUp values discovered 2026-06-10 via /discover probe (see discover.py):
+# Fargo's portal is the aggregate ForeUp org at /booking/a/19956/18, one
+# course_id per course, schedule = teesheet. Login returns jwt in body, no
+# CAPTCHA on the API path, no prepayment (require_credit_card: false).
 # ---------------------------------------------------------------------------
 FOREUP_BASE_URL = os.getenv("FOREUP_BASE_URL", "https://foreupsoftware.com/index.php/api/booking")
 FOREUP_LOGIN_URL = os.getenv("FOREUP_LOGIN_URL", "https://foreupsoftware.com/index.php/api/booking/users/login")
 
-# TODO(discovery §2.1): one schedule_id per course, from the GET .../times call.
-# Order here is irrelevant; ranking comes from Firestore preferences.
+# Login context: Edgewood hosts the aggregate org.
+FOREUP_LOGIN_COURSE_ID = os.getenv("FOREUP_LOGIN_COURSE_ID", "19956")
+
 COURSE_SCHEDULE_IDS = {
-    "Edgewood": None,
-    "Rose Creek": None,
-    "Osgood": None,
-    "El Zagal": None,
-    "Prairiewood": None,
+    "Edgewood": "3063",
+    "Rose Creek": "3064",
+    "Prairiewood": "3065",
+    "Osgood": "3066",
+    "El Zagal": "3067",
 }
 
-# TODO(discovery §2.1): booking_class from the captured times request.
-FOREUP_BOOKING_CLASS = os.getenv("FOREUP_BOOKING_CLASS", "")
+COURSE_IDS = {
+    "Edgewood": "19956",
+    "Rose Creek": "19957",
+    "Prairiewood": "19958",
+    "Osgood": "19959",
+    "El Zagal": "19960",
+}
+
+# "Book a Tee Time" public booking class from the aggregate page.
+FOREUP_BOOKING_CLASS = os.getenv("FOREUP_BOOKING_CLASS", "74")
 
 # Pro shop phone numbers, used by the §4.4 fail-safe so Byron can cancel by
 # phone if the API cancel fails. TODO Byron: verify numbers.

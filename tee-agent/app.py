@@ -199,6 +199,8 @@ def times():
             errors.append(f"{course}: {e}")
 
     body.sort(key=lambda r: (-(r[2] if r[2] is not None else -9999), r[0]))
+    logger.info("TIMES VIEW %s: %d slots, errors=%s, top=%s", date_str, len(body), errors,
+                [(t.strftime('%H:%M'), c, s) for t, c, s in body[:5]])
     rows = "".join(
         f"<tr><td><strong>{t.strftime('%-I:%M %p')}</strong></td><td>{c}</td>"
         f"<td>{'—' if s is None else f'{s:.0f}'}</td>"
@@ -217,6 +219,21 @@ window {prefs['time_window'][0]}–{prefs['time_window'][1]}</span></header>
 <main>{err_html}<div class='card'>{table}</div>
 <footer>Score = course rank + closeness to ideal time ({prefs['ideal_time']}); '—' = outside
 your window. Change date with <code>?date=YYYY-MM-DD</code>.</footer></main></body></html>"""
+
+
+@app.route("/discover", methods=["GET", "POST"])
+def discover():
+    """One-shot §2.1 discovery probe (see discover.py). Remove once configured."""
+    _require_scheduler_token()
+    import json
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    import discover as discover_mod
+
+    date_str = (datetime.now(ZoneInfo(config.LOCAL_TZ)) + timedelta(days=2)).strftime("%m-%d-%Y")
+    result = discover_mod.run(request.args.get("date", date_str))
+    logger.info("DISCOVERY RESULT: %s", json.dumps(result)[:60000])
+    return result
 
 
 @app.get("/")

@@ -54,13 +54,13 @@ def login() -> str:
     if not username or not password:
         raise ForeUpError("ForeUp credentials missing from Secret Manager")
 
-    # TODO(discovery §2.1): verify payload field names and where the JWT is
-    # returned (response body `jwt` vs Set-Cookie).
+    # Verified via /discover: jwt comes back in the response body.
     resp = _session().post(
         config.FOREUP_LOGIN_URL,
         data={
             "username": username,
             "password": password,
+            "course_id": config.FOREUP_LOGIN_COURSE_ID,
             "booking_class_id": config.FOREUP_BOOKING_CLASS,
             "api_key": "no_limits",
         },
@@ -93,7 +93,8 @@ def get_times(schedule_id: str, date: str, players: int, holes: int = 18) -> lis
 
     Returns the raw slot dicts; scoring/filtering happens in sniper.py.
     """
-    # TODO(discovery §2.1): confirm param names and date format.
+    # Verified via /discover: MM-DD-YYYY date, booking_class required,
+    # slot times come back as 'YYYY-MM-DD HH:MM' local.
     resp = _auth_session().get(
         f"{config.FOREUP_BASE_URL}/times",
         params={
