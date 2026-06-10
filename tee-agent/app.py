@@ -165,6 +165,18 @@ window {prefs['time_window'][0]}–{prefs['time_window'][1]}</span></header>
 </main></body></html>"""
 
 
+@app.get("/")
+def index():
+    return f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>tee-agent</title><style>{STATUS_CSS}</style></head><body>
+<header><h1>⛳ tee-agent</h1></header>
+<main><div class='card'><div class='empty'>
+Fargo tee time sniper is running.<br><br>
+Bookings dashboard: <code>/status?token=…</code> (token required)
+</div></div></main></body></html>"""
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
